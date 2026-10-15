@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "ui_pages": 9,
+  "students": 3,
+  "sheets": [
+    "Attendance",
+    "Seat Plan"
+  ],
+  "output": "TEST101_打包驗證_2026-10-14_0900_TESTROOM.xlsx",
+  "platform": "Linux x86_64; Windows native build remains pending"
+}
