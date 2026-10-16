@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, Protection
-from openpyxl.worksheet.pagebreak import Break, RowBreak
+from openpyxl.worksheet.pagebreak import RowBreak
 from openpyxl.worksheet.properties import PageSetupProperties
 from openpyxl.worksheet.protection import SheetProtection
 from openpyxl.worksheet.views import Selection
@@ -33,7 +33,7 @@ class TemplateEngine:
                     sheet.unmerge_cells(str(m))
             sheet.delete_rows(18, sheet.max_row-17)
             sheet.column_dimensions['G'].width = 20
-            sheet.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+            sheet.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True,autoPageBreaks=True)
             sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
             sheet.page_setup.orientation = 'portrait'
             sheet.page_setup.fitToWidth = 1
@@ -94,7 +94,7 @@ class TemplateEngine:
                     if col==1:cell.value=val
                     else:write_text(cell,val)
                     cell.font=Font(name='標楷體' if col==4 else 'Times New Roman',size=12)
-                    cell.alignment=Alignment(horizontal='center' if col<=3 else 'left',vertical='center',wrap_text=True)
+                    cell.alignment=Alignment(horizontal='center',vertical='center',wrap_text=True)
                     if col in (2,3):cell.number_format='@'
                 # Wider names wrap; allocate height so records are never clipped.
                 cn_lines=max(1,(len(student['chinese_name'])+5)//6)
@@ -111,14 +111,8 @@ class TemplateEngine:
                 last+=6
                 for row in range(18+count,last+1):
                     for col in range(6,8):sheet.cell(row,col).protection=Protection(locked=False)
-            # Deterministic conservative A4 page breaks, repeat the entire official header.
-            height=0
-            for row in range(18,last+1):
-                h=sheet.row_dimensions[row].height or 22
-                if height+h>340 and row>18:
-                    sheet.row_breaks.append(Break(id=row-1))
-                    height=0
-                height+=h
+            # Excel calculates vertical pagination using the printable height.
+            # Manual 340pt body breaks leave large unused areas after scaling.
             sheet.print_area=f'A1:G{last}'
             sheet.oddFooter.center.text='第 &P 頁 / 共 &N 頁'
             sheet.sheet_properties.outlinePr.summaryRight=False

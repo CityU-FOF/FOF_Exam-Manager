@@ -25,7 +25,19 @@ def test_four_class_acceptance(manager,tmp_path):
             assert [s.cell(i,3).value for i in range(18,18+len(rows))]==[r['student_no'] for r in rows]
             assert [s.cell(i,2).value for i in range(18,18+len(rows))]==[r['seat'] for r in rows]
             assert s.print_title_rows=='$1:$17'
-            assert s.row_breaks.brk
+            assert not s.row_breaks.brk
+            assert s.sheet_properties.pageSetUpPr.autoPageBreaks
+            assert s.page_setup.fitToWidth==1
+            assert s.page_setup.fitToHeight==0
+            assert s.page_setup.scale is None
+            assert s.page_margins.left==pytest.approx(1.8/2.54)
+            assert s.page_margins.right==pytest.approx(1.8/2.54)
+            assert s.page_margins.top==pytest.approx(1.9/2.54)
+            assert s.page_margins.bottom==pytest.approx(1.9/2.54)
+            for row in range(18,18+len(rows)):
+                for col in [4,5 if s.title=='Attendance' else 6]:
+                    assert s.cell(row,col).alignment.horizontal=='center'
+                    assert s.cell(row,col).alignment.vertical=='center'
             assert s['D18'].font.name=='標楷體'
             assert s['D18'].font.sz==12
         assert wb['Seat Plan']['C15'].value is None
