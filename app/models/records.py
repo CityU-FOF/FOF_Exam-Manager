@@ -14,6 +14,12 @@ class StudentRecord:
     source: str = ''
     raw_name: str = ''
     issues: list[str] = field(default_factory=list)
+    teaching_code: str = ''
+    academic_year: str = ''
+    semester: str = ''
+    programme_code: str = ''
+    grade: int | None = None
+    administrative_class: str = ''
 
 
 @dataclass

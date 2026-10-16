@@ -25,7 +25,7 @@ def main():
             for cls in 'DEFG':
                 candidates=inspect_roster(files[f'3{cls}.xlsx'])
                 selected=[c for c in candidates if c.recommended]
-                if len(selected)!=1 or selected[0].class_name!=cls:raise RuntimeError('Unexpected selected class')
+                if len(selected)!=1 or selected[0].class_name!='3'+cls:raise RuntimeError('Unexpected selected class')
                 counts[cls]=len(selected[0].records);m.import_records(selected[0].records)
             wb=load_workbook(files['考試出席表_BAE305_G2207.xlsx'],keep_links=False,data_only=False)
             s=wb['Attendance'];programme=s['A3'].value;programme_en=s['A4'].value;teachers=s['E10'].value
@@ -37,7 +37,7 @@ def main():
             b=m.save_batch({'name':'2026–2027學年第一學期期中考試','academic_year':'2026–2027','semester':'第一學期','exam_type':'期中'})
             classes=m.classes();sid=m.create_session(b,course['id'],{'date':dt,'start':start,'end':end,'teachers':teachers,'intake':intake},[c['id'] for c in classes],rooms)
             als={a['room_name']:a['id'] for a in m.allocations(sid)}
-            for c in classes:m.assign(als['G2209' if c['name'] in 'DF' else 'G2207'],c['id'])
+            for c in classes:m.assign(als['G2209' if c['name'] in ('3D','3F') else 'G2207'],c['id'])
             m.complete(sid)
             results=ExcelExporter(m).batch(list(als.values()),args.output_dir)
             if any(r[1]!='成功' for r in results):raise RuntimeError('Reference output failed: '+str(results))

@@ -1,0 +1,15 @@
+FOF 考試座位及簽到表管理系統 — Windows 使用方法
+
+1. 在 GitHub 按 Code → Download ZIP，將 ZIP 完整解壓縮。
+   不要直接在 ZIP 裡執行批次檔；scripts、app、resources 等資料夾都要保留。
+2. 安裝 64 位元 Python 3.12 或更新版本，安裝時勾選 Add Python to PATH。
+   Python 官方下載：https://www.python.org/downloads/windows/
+3. 首次使用：雙擊「首次安裝.bat」，等待顯示 Setup completed。
+   這一步需要網絡，用來安裝 PySide6 和 openpyxl。
+4. 日常使用：雙擊「啟動程式.bat」，即可開啟系統，毋須自行輸入指令。
+   完成首次安裝後，日常匯入、編排及生成 Excel 均可離線。
+
+升級：下載新版並完整解壓縮，再執行一次「首次安裝.bat」。
+資料預設保存在 %LOCALAPPDATA%\FOFExamManager，不放在程式資料夾內。
+原有資料庫升級前會自動備份；重新匯入學生名單可修正授課班，已有座位仍保留。
+如出現錯誤，批次視窗會保留訊息，可複製錯誤文字尋求協助。

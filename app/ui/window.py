@@ -8,18 +8,18 @@ from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabe
  QSplitter,QProgressDialog,QInputDialog,QProgressBar,QFrame,QTabWidget)
 from app.ui.widgets import FormDialog,ClassCards,RoomCards,SeatTree,SelectionDialog
 from app.ui.import_dialog import ImportDialog
+from app.ui.course_paste import CoursePasteDialog
+from app.ui.batch_dialog import BatchDialog
+from app.models.programmes import programme_values,PROGRAMMES,FACULTY
 from app.models.records import StudentRecord,CapacityError,ValidationError
 from app.database.store import uid,now
 from app.exporters.excel import ExcelExporter,safe_filename
 
 
-COURSE_FIELDS=[('code','科目代碼','line'),('name_cn','中文名稱','line'),('name_en','英文名稱','line'),
- ('teachers','任課教師（多人以 、 分隔）','line'),('programme','學位課程中文名稱','line'),
- ('programme_en','學位課程英文名稱','line'),('language','學制','line'),('notes','備註','text')]
-ROOM_FIELDS=[('name','考場名稱','line'),('capacity','最大容納人數','int'),
- ('usable_seats','可用座號（逗號分隔；留空表示連續編號）','line'),('enabled','啟用','bool'),('notes','備註','text')]
-BATCH_FIELDS=[('name','批次名稱','line'),('academic_year','學年','line'),('semester','學期','line'),
- ('exam_type','考試類型','line'),('programme','學院／課程','line'),('notes','備註','text')]
+COURSE_FIELDS=[('code','科目編號','line'),('name_cn','中文名稱','line'),('name_en','英文名稱','line'),
+ ('teachers','任課教師（多人以 、 分隔）','line'),('notes','備註','text')]
+ROOM_FIELDS=[('name','考場名稱','line'),('capacity','最多考生人數（座號自動 001 起）','int'),
+ ('enabled','啟用','bool'),('notes','備註','text')]
 
 
 def button(text,callback,layout):
@@ -63,7 +63,7 @@ class SessionDialog(FormDialog):
         self.manager=manager
         courses=[(c['code']+' '+c['name_cn'],c['id']) for c in manager.courses()]
         batches=[(b['name'],b['id']) for b in manager.batches()]
-        fields=[] if existing else [('batch_id','考試批次',batches),('course_id','科目',courses)]
+        fields=[] if existing else [('batch_id','學年／學期／考試',batches),('course_id','科目',courses)]
         fields += [('date','考試日期 YYYY-MM-DD','line'),('start','開始時間 HH:MM','line'),
           ('end','結束時間 HH:MM','line'),('teachers','本場教師（可覆寫預設）','line'),('intake','入讀時間 Intake','line'),
           ('allow_merge','允許合場（雙方場次均須啟用）','bool')]
@@ -74,6 +74,7 @@ class SessionDialog(FormDialog):
             self.layout().insertRow(self.layout().rowCount()-1,'參加班級（勾選）',self.classes)
             self.layout().insertRow(self.layout().rowCount()-1,'使用考場（勾選）',self.rooms)
             self.editors['course_id'].currentIndexChanged.connect(self.course_changed)
+            self.editors['batch_id'].currentIndexChanged.connect(self.course_changed)
             self.course_changed()
             for r in manager.rooms():
                 if r['enabled']:self.add_check(self.rooms,f'{r["name"]} · {r["capacity"]} 人',r['id'])
@@ -85,8 +86,11 @@ class SessionDialog(FormDialog):
 
     def course_changed(self):
         cid=self.editors['course_id'].currentData();self.classes.clear()
+        batch=next((b for b in self.manager.batches() if b['id']==self.editors['batch_id'].currentData()),None)
         for c in self.manager.classes(cid):
-            if c['course_id']==cid:self.add_check(self.classes,f'{c["name"]} 班 · {c["count"]} 人',c['id'])
+            normalized=lambda v:v.replace('-','').replace('–','').replace('/','')
+            if batch and c['academic_year'] and (normalized(c['academic_year'])!=normalized(batch['academic_year']) or c['semester']!=batch['semester']):continue
+            if c['course_id']==cid:self.add_check(self.classes,f'{c["name"]} 班 · {c["count"]} 人 · {c["academic_year"]} {c["semester"]}',c['id'])
         course=next((c for c in self.manager.courses() if c['id']==cid),None)
         if course:self.editors['teachers'].setText(course['teachers'])
 
@@ -102,7 +106,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
-        self.nav.addItems(['Dashboard','學生名單','科目管理','考場管理','考試批次','考場編排','座位調整','文件生成中心','設定與資料備份'])
+        self.nav.addItems(['Dashboard','學生名單','科目管理','考場管理','學年與考試','考場編排','座位調整','文件生成中心','設定與資料備份'])
         outer.addWidget(self.nav)
         right=QVBoxLayout();right.setContentsMargins(24,20,24,20);outer.addLayout(right,1)
         head=QHBoxLayout();right.addLayout(head)
@@ -135,7 +139,7 @@ class MainWindow(QMainWindow):
         self.dashboard_table.cellDoubleClicked.connect(lambda *_:self.select_session(selected_row(self.dashboard_table)['id'],5))
 
     def build_students(self):
-        layout=self.page('學生名單','拖放 .xlsx 到視窗或選取檔案匯入。先選 Sheet，再確認預覽與差異。')
+        layout=self.page('學生名單','拖放 .xlsx 到視窗或選取檔案匯入。按科目代碼識別授課班；行政班僅供參考，再確認預覽與差異。')
         filters=QHBoxLayout();layout.addLayout(filters)
         self.student_search=QLineEdit();self.student_search.setPlaceholderText('搜尋學號、中文姓名、英文姓名');filters.addWidget(self.student_search)
         self.student_course=QComboBox();self.student_class=QComboBox();filters.addWidget(self.student_course);filters.addWidget(self.student_class)
@@ -148,32 +152,32 @@ class MainWindow(QMainWindow):
         button('編輯姓名／學號',lambda:self.guard(self.edit_student),bar)
         button('停用修讀記錄',lambda:self.guard(self.remove_student),bar)
         button('班級預期人數',lambda:self.guard(self.expected_count),bar)
-        self.students_table=table(['學號','中文姓名','英文姓名','科目','班級','匯入來源']);layout.addWidget(self.students_table)
+        self.students_table=table(['學號','中文姓名','英文姓名','科目','授課班','行政班（參考）','學年','學期','匯入來源']);layout.addWidget(self.students_table)
 
     def build_courses(self):
-        layout=self.page('科目管理','每科獨立管理班級；多人教師可由場次覆寫。')
+        layout=self.page('科目管理','預設本科學士課程。複製整張科目表格，貼上分析後一次儲存；多人教師可由場次覆寫。')
         bar=QHBoxLayout();layout.addLayout(bar)
         self.course_search=QLineEdit();self.course_search.setPlaceholderText('搜尋科目');self.course_search.textChanged.connect(self.refresh_courses);bar.addWidget(self.course_search)
         button('新增',lambda:self.guard(lambda:self.course_form()),bar)
         button('編輯',lambda:self.guard(lambda:self.course_form(selected_row(self.courses_table))),bar)
         button('刪除未使用科目',lambda:self.guard(self.delete_course),bar)
-        button('Excel 批量匯入',lambda:self.guard(self.import_courses),bar)
+        button('貼上表格・智能分析',lambda:self.guard(self.paste_courses),bar)
         self.courses_table=table(['代碼','中文名稱','英文名稱','教師','課程','學制']);layout.addWidget(self.courses_table)
 
     def build_rooms(self):
-        layout=self.page('考場管理','容量和可用座號分開設定。可用座號留空時，自動建立 001 起連續座號。')
+        layout=self.page('考場管理','只需輸入最多考生人數，例如 80 人，系統自動使用 001–080 座號。')
         bar=QHBoxLayout();layout.addLayout(bar)
         button('新增考場',lambda:self.guard(lambda:self.room_form()),bar)
         button('修改／停用',lambda:self.guard(lambda:self.room_form(selected_row(self.rooms_table))),bar)
-        self.rooms_table=table(['名稱','容量','可用座號','啟用','備註']);layout.addWidget(self.rooms_table)
+        self.rooms_table=table(['名稱','最多人數','自動座號','啟用','備註']);layout.addWidget(self.rooms_table)
 
     def build_batches(self):
-        layout=self.page('考試批次與場次','批次 → 科目考試 → 日期與時段 → 考場分配 → 學生座位。雙擊場次進入編排。')
+        layout=self.page('學年與考試','先選學年 → 學期 → 期中／期末，再建立科目場次。學院固定金融學院，課程預設本科；考試名稱自動產生。')
         bar=QHBoxLayout();layout.addLayout(bar)
-        button('新增批次',lambda:self.guard(lambda:self.batch_form()),bar)
-        button('編輯批次',lambda:self.guard(lambda:self.batch_form(selected_row(self.batches_table))),bar)
-        button('刪除空批次',lambda:self.guard(self.delete_batch),bar)
-        self.batches_table=table(['批次','學年','學期','類型','課程']);layout.addWidget(self.batches_table,1)
+        button('新增學年考試',lambda:self.guard(lambda:self.batch_form()),bar)
+        button('編輯學年考試',lambda:self.guard(lambda:self.batch_form(selected_row(self.batches_table))),bar)
+        button('刪除空設定',lambda:self.guard(self.delete_batch),bar)
+        self.batches_table=table(['考試名稱（自動）','學年','學期','類型','學院／課程']);layout.addWidget(self.batches_table,1)
         bar2=QHBoxLayout();layout.addLayout(bar2)
         self.session_search=QLineEdit();self.session_search.setPlaceholderText('搜尋學年／學期／科目／日期');bar2.addWidget(self.session_search)
         self.session_search.textChanged.connect(self.refresh_sessions_table)
@@ -275,12 +279,12 @@ class MainWindow(QMainWindow):
         fill_table(self.log_table,logs,['source','created','status'])
 
     def refresh_student_classes(self):
-        populate(self.student_class,[(c['code']+' '+c['name']+' 班',c['id']) for c in self.manager.classes(self.student_course.currentData())],'全部班級')
+        populate(self.student_class,[(c['code']+' '+c['name']+' 班 · '+c['academic_year']+' '+c['semester'],c['id']) for c in self.manager.classes(self.student_course.currentData())],'全部班級')
         self.refresh_students()
 
     def refresh_students(self):
         fill_table(self.students_table,self.manager.students(self.student_search.text(),self.student_course.currentData(),self.student_class.currentData()),
-                   ['student_no','chinese_name','english_name','course_code','class_name','source'])
+                   ['student_no','chinese_name','english_name','course_code','class_name','administrative_class','academic_year','semester','source'])
         self.class_counts.setText('  /  '.join(f'{c["code"]} {c["name"]}：{c["count"]} 人'+(f'（預期 {c["expected"]}）' if c['expected'] is not None else '') for c in self.manager.classes(self.student_course.currentData())))
 
     def refresh_courses(self):
@@ -288,7 +292,9 @@ class MainWindow(QMainWindow):
         fill_table(self.courses_table,[c for c in self.manager.courses() if search in ' '.join(str(v) for v in c.values()).lower()],
                    ['code','name_cn','name_en','teachers','programme','language'])
 
-    def refresh_rooms(self):fill_table(self.rooms_table,self.manager.rooms(),['name','capacity','usable_seats','enabled','notes'])
+    def refresh_rooms(self):
+        rows=[dict(r,seat_range=f'001–{r["capacity"]:03d}') for r in self.manager.rooms()]
+        fill_table(self.rooms_table,rows,['name','capacity','seat_range','enabled','notes'])
 
     def refresh_batches(self):
         fill_table(self.batches_table,self.manager.batches(),['name','academic_year','semester','exam_type','programme']);self.refresh_sessions_table()
@@ -380,57 +386,46 @@ class MainWindow(QMainWindow):
         if paths:self.guard(lambda:self.import_paths(paths));event.acceptProposedAction()
 
     def course_form(self,old=None):
-        d=FormDialog('科目資料',COURSE_FIELDS,old or {'language':'中文'},self)
-        if d.exec()==QDialog.DialogCode.Accepted:self.manager.save_course(d.values(),old['id'] if old else None);self.refresh_all()
+        d=FormDialog('科目資料',COURSE_FIELDS,old,self)
+        programme=QComboBox()
+        for code,(cn,en) in PROGRAMMES.items():programme.addItem(f'{code} · {cn}',code)
+        d.layout().insertRow(0,'課程',programme)
+        if d.exec()==QDialog.DialogCode.Accepted:self.manager.save_course(dict(programme_values(programme.currentData()),**d.values()),old['id'] if old else None);self.refresh_all()
 
     def room_form(self,old=None):
         d=FormDialog('考場資料',ROOM_FIELDS,old or {'capacity':80,'enabled':1},self)
-        if d.exec()==QDialog.DialogCode.Accepted:self.manager.save_room(d.values(),old['id'] if old else None);self.refresh_all()
+        if d.exec()==QDialog.DialogCode.Accepted:self.manager.save_room(dict(d.values(),usable_seats=''),old['id'] if old else None);self.refresh_all()
 
     def batch_form(self,old=None):
-        d=FormDialog('考試批次',BATCH_FIELDS,old or {'academic_year':'2026–2027','semester':'第一學期','exam_type':'期中'},self)
+        d=BatchDialog(old,self)
         if d.exec()==QDialog.DialogCode.Accepted:self.manager.save_batch(d.values(),old['id'] if old else None);self.refresh_all()
 
     def delete_course(self):
         r=selected_row(self.courses_table)
         if QMessageBox.question(self,'刪除科目',f'刪除 {r["code"]}？')==QMessageBox.StandardButton.Yes:self.manager.delete_course(r['id']);self.refresh_all()
 
-    def import_courses(self):
-        from openpyxl import load_workbook
-        path,_=QFileDialog.getOpenFileName(self,'科目 Excel（第一列為欄位名称）','','Excel (*.xlsx)')
-        if not path:return
-        wb=load_workbook(path,keep_links=False,data_only=False)
-        try:
-            sheet=wb.active;headers=[str(c.value or '').strip() for c in sheet[1]]
-            aliases={'科目代碼':'code','科目編號':'code','中文名稱':'name_cn','科目中文名稱':'name_cn','英文名稱':'name_en',
-                     '任課教師':'teachers','教師':'teachers','學位課程':'programme','學制':'language','備註':'notes'}
-            headers=[aliases.get(h,h) for h in headers]
-            if not {'code','name_cn'}<=set(headers):raise ValidationError('第一列必須包含 code／科目代碼、name_cn／中文名稱。')
-            allowed={f[0] for f in COURSE_FIELDS};records=[]
-            for row in sheet.iter_rows(min_row=2):
-                if not any(c.value is not None for c in row):continue
-                if any(c.data_type=='f' for c in row):raise ValidationError('科目匯入不接受公式。')
-                values={k:str(c.value or '').strip() for k,c in zip(headers,row) if k in allowed}
-                if not values.get('code') or not values.get('name_cn'):raise ValidationError('有空白科目代碼或中文名稱。')
-                records.append(values)
-            if QMessageBox.question(self,'確認批量匯入',f'匯入／更新 {len(records)} 科？同代碼的資料將更新。')!=QMessageBox.StandardButton.Yes:return
-            # One transaction for the entire import, including updates.
-            with self.manager.db.conn:
-                for v in records:
-                    old=self.manager.db.one('SELECT id FROM courses WHERE code=?',(v['code'],))
-                    if old:self.manager.db.conn.execute('UPDATE courses SET '+','.join(k+'=?' for k in v)+' WHERE id=?',(*v.values(),old['id']))
-                    else:self.manager.db.conn.execute('INSERT INTO courses(id,'+','.join(v)+') VALUES('+','.join('?' for _ in range(len(v)+1))+')',(uid(),*v.values()))
-                self.manager.db.conn.execute("UPDATE sessions SET status='草稿',modified=?",(now(),))
-            self.refresh_all()
-        finally:wb.close()
+    def paste_courses(self):
+        d=CoursePasteDialog(self.manager,self)
+        if d.exec()==QDialog.DialogCode.Accepted:self.refresh_all()
 
     def add_student(self):
         courses=[(c['code']+' '+c['name_cn'],c['code']) for c in self.manager.courses()]
         if not courses:raise ValidationError('請先建立科目。')
         d=FormDialog('手動新增修讀記錄',[('student_no','學號','line'),('chinese_name','中文姓名','line'),('english_name','英文姓名','line'),
-                      ('course_code','科目',courses),('class_name','班級','line')],parent=self)
+                      ('course_code','科目',courses),('class_id','已存在授課班',[]),('class_name','新增授課班名稱（沒有名單時）','line')],parent=self)
+        def choices():
+            code=d.editors['course_code'].currentData()
+            populate(d.editors['class_id'],[(c['name']+' · '+c['academic_year']+' '+c['semester'],c['id']) for c in self.manager.classes() if c['code']==code],'新增授課班（手動輸入）')
+        d.editors['course_code'].currentIndexChanged.connect(choices);choices()
         if d.exec()==QDialog.DialogCode.Accepted:
-            v=d.values();self.manager.import_records([StudentRecord(**v,source='手動新增',raw_name=v['chinese_name']+' '+v['english_name'])]);self.refresh_all()
+            v=d.values();cid=v.pop('class_id');metadata={}
+            if cid:
+                cls=next(c for c in self.manager.classes() if c['id']==cid)
+                v['class_name']=cls['name']
+                metadata={k:cls[k] for k in ['teaching_code','academic_year','semester','programme_code','grade']}
+            elif any(c['code']==v['course_code'] and c['name']==v['class_name'] for c in self.manager.classes()):
+                raise ValidationError('此授課班已有名單，請從「已存在授課班」選取對應學年學期。')
+            self.manager.import_records([StudentRecord(**v,**metadata,source='手動新增',raw_name=v['chinese_name']+' '+v['english_name'])]);self.refresh_all()
 
     def edit_student(self):
         r=selected_row(self.students_table)
@@ -460,7 +455,7 @@ class MainWindow(QMainWindow):
             self.refresh_all()
 
     def new_session(self):
-        if not self.manager.courses() or not self.manager.batches() or not self.manager.rooms():raise ValidationError('請先匯入名單、建立科目、考場與批次。')
+        if not self.manager.courses() or not self.manager.batches() or not self.manager.rooms():raise ValidationError('請先匯入名單、建立科目、考場與學年考試設定。')
         d=SessionDialog(self.manager,self)
         if d.exec()==QDialog.DialogCode.Accepted:
             v=d.values();sid=self.manager.create_session(v.pop('batch_id'),v.pop('course_id'),v,d.checked(d.classes),d.checked(d.rooms))

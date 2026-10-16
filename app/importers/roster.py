@@ -3,6 +3,7 @@ from collections import Counter
 from pathlib import Path
 from openpyxl import load_workbook
 from app.models.records import Candidate, StudentRecord, ValidationError
+from app.models.programmes import parse_teaching_code, PROGRAMMES
 
 
 def split_name(raw):
@@ -83,11 +84,14 @@ def inspect_roster(path):
             meta = {}
             for row in sheet.iter_rows(max_row=header-1):
                 for i, cell in enumerate(row[:-1]):
-                    if cell.value in ('科目名稱', '教務科目代碼', '授課老師', '課程'):
+                    if cell.value in ('科目名稱', '科目代碼', '教務科目代碼', '授課老師', '課程'):
                         meta[str(cell.value)] = str(row[i+1].value or '').strip()
             title = meta.get('科目名稱', '')
             match = re.search(r'([A-Za-z]{2,}\d{2,})-([A-Za-z0-9]+)\s*$', title)
             code = meta.get('教務科目代碼', '') or (match[1] if match else '')
+            teaching = parse_teaching_code(meta.get('科目代碼', ''), code)
+            if teaching:
+                code = teaching.course_code
             course_name = title[:match.start()].rstrip(' -') if match else title
             grouped = {}
             for row in sheet.iter_rows(min_row=header+1):
@@ -109,10 +113,22 @@ def inspect_roster(path):
                     issues.append('中文姓名缺失，需要人工確認')
                 if not sid or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', sid):
                     issues.append('空白或錯誤學號')
-                cls = val('class') or (sheet.title if sheet.title not in ('匯總', '汇总', 'Summary') else '')
+                admin = val('class')
+                cls = teaching.class_name if teaching else (admin or (sheet.title if sheet.title not in ('匯總', '汇总', 'Summary') else ''))
                 record = StudentRecord(sid, cn, en, cls, val('code') or code,
                                        val('course') or course_name, meta.get('課程', ''),
                                        meta.get('授課老師', ''), path.name, raw, issues)
+                record.administrative_class = admin
+                if teaching:
+                    record.teaching_code = teaching.value
+                    record.academic_year = teaching.academic_year
+                    record.semester = teaching.semester
+                    record.programme_code = teaching.programme_code
+                    record.grade = teaching.grade
+                    if teaching.programme_code in PROGRAMMES:
+                        record.programme = PROGRAMMES[teaching.programme_code][0]
+                elif meta.get('科目代碼'):
+                    issues.append('完整科目代碼無法識別，請人工核對授課班及科目編號')
                 if not record.course_code:
                     issues.append('科目代碼缺失（可在預覽填寫）')
                 if not cls:
@@ -124,6 +140,33 @@ def inspect_roster(path):
                     if counts[rec.student_no] > 1:
                         rec.issues.append('同 Sheet 重複學號，需要人工確認')
                 candidates.append(Candidate(sheet.title, cls, records))
+        # A coded workbook describes one teaching roster. Administrative sheets
+        # are partitions of that roster, never different teaching classes.
+        coded = {}
+        for c in candidates:
+            if c.records[0].teaching_code:
+                coded.setdefault(c.records[0].teaching_code, []).append(c)
+        if coded:
+            result = [c for c in candidates if not c.records[0].teaching_code]
+            for code, sheets in coded.items():
+                summary = [c for c in sheets if c.sheet.lower() in ('匯總', '汇总', 'summary', '總表', '总表')]
+                if summary:
+                    primary = summary[0]
+                    primary.recommended = True
+                    result.append(primary)
+                else:
+                    records = {}
+                    for c in sheets:
+                        for r in c.records:
+                            old = records.get(r.student_no)
+                            if old and (old.chinese_name, old.english_name) != (r.chinese_name, r.english_name):
+                                old.issues.append('不同 Sheet 的同學號姓名不一致，需要人工確認')
+                                old.raw_name += '\n其他 Sheet：' + r.raw_name
+                            elif not old:
+                                records[r.student_no] = r
+                    primary = sheets[0]
+                    result.append(Candidate(' + '.join(c.sheet for c in sheets), primary.class_name, list(records.values()), True))
+            return result
         independent = {c.class_name for c in candidates if c.sheet == c.class_name}
         hint = re.search(r'(?:\d|[-_])([A-Za-z])$', path.stem)
         for c in candidates:

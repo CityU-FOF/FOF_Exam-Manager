@@ -8,10 +8,10 @@ from app.importers.roster import inspect_roster
 class ImportDialog(QDialog):
     def __init__(self,manager,paths,parent=None):
         super().__init__(parent);self.manager=manager;self.candidates=[];self.records=[]
-        self.setWindowTitle('名單匯入 · 選擇班級、預覽、差異合併');self.resize(1150,760)
+        self.setWindowTitle('名單匯入 · 科目授課班、預覽、差異合併');self.resize(1250,800)
         layout=QVBoxLayout(self)
-        self.summary=QLabel('優先選取獨立班級 Sheet；請確認真正需要的班級。');layout.addWidget(self.summary)
-        self.sheets=QTableWidget(0,5);self.sheets.setHorizontalHeaderLabels(['選取','檔案','Sheet','班級','實際人數'])
+        self.summary=QLabel('按完整科目代碼識別授課班，優先使用完整匯總名單；行政班不影響修讀班級。');layout.addWidget(self.summary)
+        self.sheets=QTableWidget(0,7);self.sheets.setHorizontalHeaderLabels(['選取','檔案','來源 Sheet','授課班','完整科目代碼','學年／學期','人數'])
         self.sheets.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         layout.addWidget(self.sheets)
         for path in paths:
@@ -20,11 +20,12 @@ class ImportDialog(QDialog):
                 item=QTableWidgetItem();item.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable)
                 item.setCheckState(Qt.CheckState.Checked if c.recommended else Qt.CheckState.Unchecked)
                 self.sheets.setItem(row,0,item)
-                for col,value in enumerate([c.records[0].source,c.sheet,c.class_name,str(len(c.records))],1):
+                first=c.records[0]
+                for col,value in enumerate([first.source,c.sheet,c.class_name,first.teaching_code,first.academic_year+' '+first.semester,str(len(c.records))],1):
                     item=QTableWidgetItem(value);item.setFlags(Qt.ItemFlag.ItemIsEnabled);self.sheets.setItem(row,col,item)
         preview=QPushButton('載入所選班級預覽');preview.clicked.connect(self.load_preview);layout.addWidget(preview)
-        self.preview=QTableWidget(0,8)
-        self.preview.setHorizontalHeaderLabels(['學號','中文姓名','英文姓名','班級','科目代碼','科目名稱','問題／原始姓名','已人工核對'])
+        self.preview=QTableWidget(0,11)
+        self.preview.setHorizontalHeaderLabels(['學號','中文姓名','英文姓名','授課班','科目編號','科目名稱','行政班（參考）','學年／學期','完整科目代碼','問題／原始姓名','已人工核對'])
         self.preview.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.preview,2)
         self.remove=QCheckBox('差異合併：停用所選班級已移除的修讀記錄（保留現有座位並要求人工處理）')
@@ -42,29 +43,26 @@ class ImportDialog(QDialog):
         self.preview.setRowCount(len(self.records))
         for i,r in enumerate(self.records):
             for col,value in enumerate([r.student_no,r.chinese_name,r.english_name,r.class_name,r.course_code,r.course_name,
+                                        r.administrative_class,r.academic_year+' '+r.semester,r.teaching_code,
                                         '；'.join(r.issues)+'\n原文：'+r.raw_name]):
                 item=QTableWidgetItem(value)
-                if col==6:item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                if col>=7 or (r.teaching_code and col in (3,4)):item.setFlags(Qt.ItemFlag.ItemIsEnabled)
                 self.preview.setItem(i,col,item)
             reviewed=QTableWidgetItem();reviewed.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable)
             reviewed.setCheckState(Qt.CheckState.Unchecked if r.issues else Qt.CheckState.Checked)
-            self.preview.setItem(i,7,reviewed)
-        differences=[]
-        example={'D':30,'E':28,'F':34,'G':35}
-        for i,c in enumerate(self.candidates):
-            if self.sheets.item(i,0).checkState()==Qt.CheckState.Checked and c.class_name in example and c.records[0].source==f'3{c.class_name}.xlsx':
-                differences.append(f'{c.class_name} 班：實際 {len(c.records)}，驗收示例 {example[c.class_name]}（差 {len(c.records)-example[c.class_name]:+d}）')
-        self.summary.setText(f'預覽 {len(self.records)} 人。只匯入所選 Sheet；有問題記錄必須修正並勾選「已人工核對」。\n'+'；'.join(differences))
+            self.preview.setItem(i,10,reviewed)
+        details=['%s：%d 人'%(c.class_name,len(c.records)) for i,c in enumerate(self.candidates) if self.sheets.item(i,0).checkState()==Qt.CheckState.Checked]
+        self.summary.setText(f'預覽 {len(self.records)} 人。按科目代碼計算授課班，包含不同行政班的修讀學生；行政班僅供參考。\n'+'；'.join(details))
         self.summary.setWordWrap(True)
 
     def edited_records(self):
         if not self.records:raise ValueError('請先選取班級。')
         rows=[]
         for i,r in enumerate(self.records):
-            if self.preview.item(i,7).checkState()!=Qt.CheckState.Checked:raise ValueError(f'第 {i+1} 列尚未人工核對。')
+            if self.preview.item(i,10).checkState()!=Qt.CheckState.Checked:raise ValueError(f'第 {i+1} 列尚未人工核對。')
             values=[self.preview.item(i,j).text().strip() for j in range(6)]
             rows.append(replace(r,student_no=values[0],chinese_name=values[1],english_name=values[2],
-                                class_name=values[3],course_code=values[4],course_name=values[5],issues=[]))
+                                class_name=values[3],course_code=values[4],course_name=values[5],administrative_class=self.preview.item(i,6).text().strip(),issues=[]))
         return rows
 
     def show_diff(self):

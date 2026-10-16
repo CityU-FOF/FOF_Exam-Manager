@@ -16,6 +16,24 @@ class Manager:
     def rooms(self):
         return self.db.rows('SELECT * FROM rooms ORDER BY name')
 
+    def save_courses(self, records):
+        allowed={'code','name_cn','name_en','teachers','programme','programme_en','language','notes'}
+        seen=set()
+        for values in records:
+            if not set(values)<=allowed:raise ValidationError('科目欄位不正確。')
+            code=values.get('code','')
+            if not re.fullmatch(r'[A-Z]{2,6}\d{3,4}',code):raise ValidationError('請核對科目編號，例如 BAE305。')
+            if code in seen:raise ValidationError('科目編號重複，請刪除多餘預覽列。')
+            seen.add(code)
+            if not all(values.get(k,'').strip() for k in ('name_cn','name_en','teachers')):
+                raise ValidationError('請補齊中英文科名及教師。')
+        with self.db.conn:
+            for v in records:
+                old=self.db.one('SELECT id FROM courses WHERE code=?',(v['code'],))
+                if old:self.db.conn.execute('UPDATE courses SET '+','.join(k+'=?' for k in v)+' WHERE id=?',(*v.values(),old['id']))
+                else:self.db.conn.execute('INSERT INTO courses(id,'+','.join(v)+') VALUES('+','.join('?' for _ in range(len(v)+1))+')',(uid(),*v.values()))
+                if old:self.db.conn.execute("UPDATE sessions SET status='草稿',modified=? WHERE exam_id IN (SELECT id FROM exams WHERE course_id=?)",(now(),old['id']))
+
     def classes(self, course_id=None):
         sql = '''SELECT c.*,co.code,co.name_cn,COUNT(CASE WHEN e.active=1 THEN 1 END) count
                  FROM classes c JOIN courses co ON co.id=c.course_id
@@ -25,6 +43,8 @@ class Manager:
         return self.db.rows(sql+' GROUP BY c.id ORDER BY co.code,c.name', (course_id,) if course_id else ())
 
     def save_course(self, values, identifier=None):
+        from app.models.programmes import programme_values
+        if not identifier:values=dict(programme_values(),**values)
         if not values.get('code','').strip() or not values.get('name_cn','').strip():
             raise ValidationError('請填寫科目代碼及中文名稱。')
         return self._save('courses', values, identifier)
@@ -50,8 +70,12 @@ class Manager:
         return self._save('rooms', values, identifier)
 
     def save_batch(self, values, identifier=None):
-        if not all(str(values.get(k,'')).strip() for k in ['name','academic_year','semester','exam_type']):
-            raise ValidationError('請填寫批次名稱、學年、學期及考試類型。')
+        from app.models.programmes import FACULTY,programme_values
+        values=dict(values)
+        if not all(str(values.get(k,'')).strip() for k in ['academic_year','semester','exam_type']):
+            raise ValidationError('請選擇學年、學期及期中／期末考試。')
+        values['name']=f'{values["academic_year"]}學年{values["semester"]}{values["exam_type"]}考試'
+        values['programme']=FACULTY+' / '+programme_values()['programme']
         if not identifier:
             values = dict(values, created=now())
         return self._save('batches', values, identifier)
@@ -86,7 +110,8 @@ class Manager:
             self.db.conn.execute('DELETE FROM courses WHERE id=?',(identifier,))
 
     def students(self, search='', course_id=None, class_id=None):
-        sql = '''SELECT s.*,e.id enrollment_id,e.source,e.active,e.position,c.name class_name,c.id class_id,
+        sql = '''SELECT s.*,e.id enrollment_id,e.source,e.active,e.position,e.administrative_class,c.name class_name,c.id class_id,
+        c.teaching_code,c.academic_year,c.semester,
         co.id course_id,co.code course_code,co.name_cn course_name FROM students s
         JOIN enrollments e ON e.student_id=s.id JOIN classes c ON c.id=e.class_id JOIN courses co ON co.id=c.course_id
         WHERE e.active=1'''
@@ -102,6 +127,11 @@ class Manager:
 
     @staticmethod
     def check_student(record):
+        from app.models.programmes import parse_teaching_code
+        if record.teaching_code:
+            teaching=parse_teaching_code(record.teaching_code,record.course_code)
+            if not teaching or teaching.class_name!=record.class_name:
+                raise ValidationError('科目編號或授課班與完整科目代碼不符，請核對。')
         if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*',record.student_no or ''):
             raise ValidationError('空白或錯誤學號。')
         if not (record.chinese_name or record.english_name):
@@ -111,10 +141,38 @@ class Manager:
         if record.issues:
             raise ValidationError('請先在預覽處理資料問題：'+ '；'.join(record.issues))
 
+    def _legacy_can_adopt(self, class_id, record):
+        batches=self.db.rows('''SELECT b.academic_year,b.semester FROM session_classes sc
+            JOIN sessions s ON s.id=sc.session_id JOIN exams e ON e.id=s.exam_id
+            JOIN batches b ON b.id=e.batch_id WHERE sc.class_id=?''',(class_id,))
+        normalized=lambda v:re.sub('[-–—/]','',v)
+        return all(normalized(b['academic_year'])==normalized(record.academic_year) and b['semester']==record.semester for b in batches)
+
+    def _class_for_record(self, record):
+        co=self.db.one('SELECT id FROM courses WHERE code=?',(record.course_code,))
+        if not co:return None
+        cl=self.db.one('SELECT * FROM classes WHERE course_id=? AND name=? AND teaching_code=?',
+                       (co['id'],record.class_name,record.teaching_code))
+        if cl or not record.teaching_code:return cl
+        # Adopt an old administrative partition only when it has no teaching code.
+        legacy=re.fullmatch(r'\d+([A-Z]+)',record.class_name)
+        if legacy:
+            candidate=self.db.one("SELECT * FROM classes WHERE course_id=? AND name=? AND teaching_code=''",(co['id'],legacy[1]))
+            if candidate and self._legacy_can_adopt(candidate['id'],record):return candidate
+        return None
+
+    def _enrollment_for_record(self, record):
+        cl=self._class_for_record(record)
+        candidates=self.db.rows('''SELECT e.*,c.name old_class FROM enrollments e
+            JOIN students s ON s.id=e.student_id JOIN classes c ON c.id=e.class_id
+            JOIN courses co ON co.id=c.course_id WHERE co.code=? AND s.student_no=?
+            AND (c.id=? OR (?<>'' AND e.teaching_code='' AND e.source=?))
+            ORDER BY CASE WHEN c.id=? THEN 0 ELSE 1 END''',
+            (record.course_code,record.student_no,cl['id'] if cl else '',record.teaching_code,record.source,cl['id'] if cl else ''))
+        return next((e for e in candidates if (cl and e['class_id']==cl['id']) or self._legacy_can_adopt(e['class_id'],record)),None)
+
     def import_diff(self, records):
-        grouped={}
-        seen=set()
-        identities={}
+        grouped={};seen=set();identities={};memberships={}
         diff={'added':[], 'removed':[], 'changed':[], 'unchanged':[]}
         for r in records:
             self.check_student(r)
@@ -122,64 +180,71 @@ class Manager:
             if r.student_no in identities and identities[r.student_no]!=name:
                 raise ValidationError('同一學號在所選名單中的姓名不一致，請先人工核對。')
             identities[r.student_no]=name
-            key=(r.course_code,r.class_name,r.student_no)
-            if key in seen:
-                raise ValidationError('所選 Sheet 有重複學生，請勿同時選取匯總與相同班級。')
+            key=(r.course_code,r.class_name,r.teaching_code,r.student_no)
+            if key in seen:raise ValidationError('所選名單重複，請勿重複選取同一科目授課班。')
             seen.add(key)
-            # A student cannot belong to two selected classes of the same course.
-            if any(k[0]==r.course_code and k[2]==r.student_no and k[1]!=r.class_name for k in seen):
-                raise ValidationError('同科目學生出現在兩個班級，請人工確認修讀關係。')
-            grouped.setdefault((r.course_code,r.class_name),[]).append(r)
+            member=(r.course_code,r.academic_year,r.semester,r.student_no)
+            if member in memberships and memberships[member]!=r.class_name:
+                raise ValidationError('同科目同學期學生出現在兩個授課班，請人工確認修讀關係。')
+            memberships[member]=r.class_name
+            grouped.setdefault((r.course_code,r.class_name,r.teaching_code),[]).append(r)
             old=self.db.one('SELECT * FROM students WHERE student_no=?',(r.student_no,))
-            enrollment=self.db.one('''SELECT e.* FROM enrollments e JOIN classes c ON c.id=e.class_id
-               JOIN courses co ON co.id=c.course_id JOIN students s ON s.id=e.student_id
-               WHERE co.code=? AND c.name=? AND s.student_no=? AND e.active=1''',key)
-            if not enrollment:
-                diff['added'].append(r)
-            elif old['chinese_name']!=r.chinese_name or old['english_name']!=r.english_name:
-                diff['changed'].append(r)
-            else:
-                diff['unchanged'].append(r)
-        for (code,cls), rr in grouped.items():
-            wanted={r.student_no for r in rr}
-            old=self.db.rows('''SELECT s.*,e.id enrollment_id FROM enrollments e JOIN students s ON s.id=e.student_id
+            enrollment=self._enrollment_for_record(r)
+            if not enrollment or not enrollment['active']:diff['added'].append(r)
+            elif (old['chinese_name'],old['english_name'])!=name:diff['changed'].append(r)
+            else:diff['unchanged'].append(r)
+        for rr in grouped.values():
+            r=rr[0];cl=self._class_for_record(r);wanted={x.student_no for x in rr}
+            old=self.db.rows('''SELECT s.*,e.id enrollment_id,e.class_id FROM enrollments e JOIN students s ON s.id=e.student_id
                 JOIN classes c ON c.id=e.class_id JOIN courses co ON co.id=c.course_id
-                WHERE co.code=? AND c.name=? AND e.active=1''',(code,cls))
-            diff['removed'] += [o for o in old if o['student_no'] not in wanted]
+                WHERE co.code=? AND e.active=1 AND (c.id=? OR (?<>'' AND e.teaching_code='' AND e.source=?))''',
+                (r.course_code,cl['id'] if cl else '',r.teaching_code,r.source))
+            diff['removed'] += [o for o in old if o['student_no'] not in wanted and ((cl and o['class_id']==cl['id']) or self._legacy_can_adopt(o['class_id'],r))]
         return diff
 
     def import_records(self, records, remove_missing=False):
+        from app.models.programmes import programme_values,PROGRAMMES
         diff=self.import_diff(records)
         with self.db.conn:
             for index,r in enumerate(records):
                 co=self.db.one('SELECT id FROM courses WHERE code=?',(r.course_code,))
                 if not co:
-                    co={'id':uid()}
-                    self.db.conn.execute('INSERT INTO courses(id,code,name_cn,teachers,programme) VALUES(?,?,?,?,?)',
-                                         (co['id'],r.course_code,r.course_name or r.course_code,r.teachers,r.programme))
-                cl=self.db.one('SELECT id FROM classes WHERE course_id=? AND name=?',(co['id'],r.class_name))
+                    co={'id':uid()};defaults=programme_values(r.programme_code if r.programme_code in PROGRAMMES else 'BAECF')
+                    self.db.conn.execute('INSERT INTO courses(id,code,name_cn,teachers,programme,programme_en) VALUES(?,?,?,?,?,?)',
+                        (co['id'],r.course_code,r.course_name or r.course_code,r.teachers,r.programme or defaults['programme'],defaults['programme_en']))
+                cl=self._class_for_record(r)
                 if not cl:
                     cl={'id':uid()}
-                    self.db.conn.execute('INSERT INTO classes(id,course_id,name) VALUES(?,?,?)',(cl['id'],co['id'],r.class_name))
+                    self.db.conn.execute('INSERT INTO classes(id,course_id,name,teaching_code,academic_year,semester,programme_code,grade) VALUES(?,?,?,?,?,?,?,?)',
+                        (cl['id'],co['id'],r.class_name,r.teaching_code,r.academic_year,r.semester,r.programme_code,r.grade))
+                elif r.teaching_code and not cl['teaching_code']:
+                    self.db.conn.execute('UPDATE classes SET name=?,teaching_code=?,academic_year=?,semester=?,programme_code=?,grade=? WHERE id=?',
+                        (r.class_name,r.teaching_code,r.academic_year,r.semester,r.programme_code,r.grade,cl['id']))
+                enrollment=self._enrollment_for_record(r)
                 other=self.db.one('''SELECT c.name FROM enrollments e JOIN classes c ON c.id=e.class_id
-                     JOIN students s ON s.id=e.student_id WHERE c.course_id=? AND c.id<>? AND s.student_no=? AND e.active=1''',
-                     (co['id'],cl['id'],r.student_no))
-                if other:
-                    raise ValidationError(f'此學生已在同科目的 {other["name"]} 班，請先確認或停用舊修讀記錄。')
+                     JOIN students s ON s.id=e.student_id WHERE c.course_id=? AND c.id<>? AND s.student_no=? AND e.active=1
+                     AND c.academic_year=? AND c.semester=? AND e.id<>?''',
+                     (co['id'],cl['id'],r.student_no,r.academic_year,r.semester,enrollment['id'] if enrollment else ''))
+                if other:raise ValidationError(f'此學生已在同科目同學期的 {other["name"]} 班，請先確認修讀關係。')
                 st=self.db.one('SELECT id FROM students WHERE student_no=?',(r.student_no,))
                 if not st:
                     st={'id':uid()}
                     self.db.conn.execute('INSERT INTO students VALUES(?,?,?,?,?)',(st['id'],r.student_no,r.chinese_name,r.english_name,r.raw_name))
                 else:
-                    self.db.conn.execute('UPDATE students SET chinese_name=?,english_name=?,raw_name=? WHERE id=?',
-                                         (r.chinese_name,r.english_name,r.raw_name,st['id']))
-                self.db.conn.execute('''INSERT INTO enrollments(id,student_id,class_id,source,position) VALUES(?,?,?,?,?)
-                    ON CONFLICT(student_id,class_id) DO UPDATE SET active=1,source=excluded.source,position=excluded.position''',
-                    (uid(),st['id'],cl['id'],r.source,index))
+                    self.db.conn.execute('UPDATE students SET chinese_name=?,english_name=?,raw_name=? WHERE id=?',(r.chinese_name,r.english_name,r.raw_name,st['id']))
+                if enrollment:
+                    # Move the existing membership ID, so seats and undo history survive.
+                    self.db.conn.execute('UPDATE enrollments SET class_id=?,active=1,source=?,position=?,administrative_class=?,teaching_code=? WHERE id=?',
+                        (cl['id'],r.source,index,r.administrative_class,r.teaching_code,enrollment['id']))
+                    if enrollment['class_id']!=cl['id']:
+                        sessions=self.db.rows('''SELECT DISTINCT al.session_id FROM assignments a JOIN allocations al ON al.id=a.allocation_id
+                             WHERE a.enrollment_id=?''',(enrollment['id'],))
+                        for session in sessions:self.db.conn.execute('INSERT OR IGNORE INTO session_classes VALUES(?,?)',(session['session_id'],cl['id']))
+                else:
+                    self.db.conn.execute('INSERT INTO enrollments(id,student_id,class_id,source,position,administrative_class,teaching_code) VALUES(?,?,?,?,?,?,?)',
+                        (uid(),st['id'],cl['id'],r.source,index,r.administrative_class,r.teaching_code))
             if remove_missing:
-                for old in diff['removed']:
-                    # Existing assignments deliberately survive and are flagged before generation.
-                    self.db.conn.execute('UPDATE enrollments SET active=0 WHERE id=?',(old['enrollment_id'],))
+                for old in diff['removed']:self.db.conn.execute('UPDATE enrollments SET active=0 WHERE id=?',(old['enrollment_id'],))
             self.db.conn.execute('INSERT INTO import_logs VALUES(?,?,?,?)',
                 (uid(),'; '.join(sorted({r.source for r in records})),now(),json.dumps({k:len(v) for k,v in diff.items()})))
             self.db.conn.execute("UPDATE sessions SET status='草稿',modified=?",(now(),))
@@ -211,6 +276,13 @@ class Manager:
             raise ValidationError('至少選擇一個班級及考場。')
         if any(not self.db.one('SELECT id FROM classes WHERE id=? AND course_id=?',(c,course_id)) for c in class_ids):
             raise ValidationError('班級不屬於所選科目。')
+        batch=self.db.one('SELECT * FROM batches WHERE id=?',(batch_id,))
+        if not batch:raise ValidationError('學年考試設定不存在。')
+        for cid in class_ids:
+            cls=self.db.one('SELECT * FROM classes WHERE id=?',(cid,))
+            year=lambda value:re.sub('[-–—/]','',value)
+            if cls['academic_year'] and (year(cls['academic_year'])!=year(batch['academic_year']) or cls['semester']!=batch['semester']):
+                raise ValidationError('授課班的學年學期與所選考試設定不符。')
         identifier=uid()
         with self.db.conn:
             existing=self.db.one('SELECT id FROM exams WHERE batch_id=? AND course_id=?',(batch_id,course_id))

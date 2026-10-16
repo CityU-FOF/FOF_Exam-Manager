@@ -9,11 +9,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install -r requirements-dev.txt
-      - run: python -m pytest -q
+      - name: Install using the first-time setup batch file
+        shell: cmd
+        run: |
+          chcp 65001 >nul
+          call "首次安裝.bat" --no-pause
+      - run: .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+      - run: .\.venv\Scripts\python.exe -m pytest -q
         env:
           QT_QPA_PLATFORM: offscreen
-      - run: python -m PyInstaller --noconfirm --clean FOFExamManager.spec
+      - name: Check the launch batch file using synthetic data
+        shell: cmd
+        env:
+          FOF_NO_PAUSE: '1'
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          chcp 65001 >nul
+          call "啟動程式.bat" --self-test "%RUNNER_TEMP%\FOF launch check"
+      - run: .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean FOFExamManager.spec
       - uses: actions/upload-artifact@v4
         with:
           name: FOFExamManager-Windows

@@ -1,8 +1,10 @@
 import os
 import sqlite3
 import uuid
+import tempfile
 from pathlib import Path
 from datetime import datetime
+from contextlib import closing
 from app.models.records import ValidationError
 
 
@@ -22,17 +24,19 @@ def default_data_dir():
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS schema_version(version INTEGER NOT NULL);
-INSERT INTO schema_version SELECT 1 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
+INSERT INTO schema_version SELECT 2 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
 CREATE TABLE IF NOT EXISTS students(id TEXT PRIMARY KEY,student_no TEXT NOT NULL UNIQUE,
  chinese_name TEXT NOT NULL,english_name TEXT NOT NULL,raw_name TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS courses(id TEXT PRIMARY KEY,code TEXT NOT NULL UNIQUE,name_cn TEXT NOT NULL,
  name_en TEXT NOT NULL DEFAULT '',teachers TEXT NOT NULL DEFAULT '',programme TEXT NOT NULL DEFAULT '',
  programme_en TEXT NOT NULL DEFAULT '',language TEXT NOT NULL DEFAULT '中文',notes TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS classes(id TEXT PRIMARY KEY,course_id TEXT NOT NULL REFERENCES courses(id),
- name TEXT NOT NULL,expected INTEGER,UNIQUE(course_id,name));
+ name TEXT NOT NULL,expected INTEGER,teaching_code TEXT NOT NULL DEFAULT '',
+ academic_year TEXT NOT NULL DEFAULT '',semester TEXT NOT NULL DEFAULT '',
+ programme_code TEXT NOT NULL DEFAULT '',grade INTEGER,UNIQUE(course_id,name,teaching_code));
 CREATE TABLE IF NOT EXISTS enrollments(id TEXT PRIMARY KEY,student_id TEXT NOT NULL REFERENCES students(id),
  class_id TEXT NOT NULL REFERENCES classes(id),source TEXT NOT NULL DEFAULT '',position INTEGER NOT NULL,
- active INTEGER NOT NULL DEFAULT 1,UNIQUE(student_id,class_id));
+ active INTEGER NOT NULL DEFAULT 1,administrative_class TEXT NOT NULL DEFAULT '',teaching_code TEXT NOT NULL DEFAULT '',UNIQUE(student_id,class_id));
 CREATE TABLE IF NOT EXISTS rooms(id TEXT PRIMARY KEY,name TEXT NOT NULL UNIQUE,capacity INTEGER NOT NULL CHECK(capacity>0),
  usable_seats TEXT NOT NULL DEFAULT '',notes TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS batches(id TEXT PRIMARY KEY,name TEXT NOT NULL,academic_year TEXT NOT NULL,
@@ -73,17 +77,44 @@ class Store:
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
         existing={r[0] for r in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        if existing and ('schema_version' not in existing or self.conn.execute('SELECT version FROM schema_version').fetchone()[0]!=1):
+        if existing and ('schema_version' not in existing or self.conn.execute('SELECT version FROM schema_version').fetchone()[0] not in (1,2)):
             self.conn.close()
             raise ValidationError('此資料庫不是相容的 FOF 考試系統資料庫，未改動其內容。')
         self.conn.execute('PRAGMA foreign_keys=ON')
         self.conn.execute('PRAGMA journal_mode=WAL')
         self.conn.execute('PRAGMA busy_timeout=5000')
+        self.upgrade_backup = None
+        if existing and self.conn.execute('SELECT version FROM schema_version').fetchone()[0] == 1:
+            self.upgrade_backup = self.path.with_name('before_upgrade_v2_' + uid()[:12] + '.sqlite3')
+            self.backup(self.upgrade_backup)
+            self._upgrade_v1()
         self.conn.executescript(SCHEMA)
         self.conn.commit()
-        if self.conn.execute('SELECT version FROM schema_version').fetchone()[0] != 1:
+        if self.conn.execute('SELECT version FROM schema_version').fetchone()[0] != 2:
             self.conn.close()
             raise ValidationError('資料庫版本不相容；請使用相應版本程式或還原相容備份。')
+
+    def _upgrade_v1(self):
+        self.conn.commit()
+        self.conn.execute('PRAGMA foreign_keys=OFF')
+        try:
+            with self.conn:
+                self.conn.execute('BEGIN IMMEDIATE')
+                self.conn.execute('''CREATE TABLE classes_v2(id TEXT PRIMARY KEY,course_id TEXT NOT NULL REFERENCES courses(id),
+                    name TEXT NOT NULL,expected INTEGER,teaching_code TEXT NOT NULL DEFAULT '',
+                    academic_year TEXT NOT NULL DEFAULT '',semester TEXT NOT NULL DEFAULT '',
+                    programme_code TEXT NOT NULL DEFAULT '',grade INTEGER,UNIQUE(course_id,name,teaching_code))''')
+                self.conn.execute('INSERT INTO classes_v2(id,course_id,name,expected) SELECT id,course_id,name,expected FROM classes')
+                self.conn.execute('DROP TABLE classes')
+                self.conn.execute('ALTER TABLE classes_v2 RENAME TO classes')
+                self.conn.execute("ALTER TABLE enrollments ADD COLUMN administrative_class TEXT NOT NULL DEFAULT ''")
+                self.conn.execute("ALTER TABLE enrollments ADD COLUMN teaching_code TEXT NOT NULL DEFAULT ''")
+                self.conn.execute('UPDATE enrollments SET administrative_class=(SELECT name FROM classes WHERE id=enrollments.class_id)')
+                self.conn.execute('UPDATE schema_version SET version=2')
+                if self.conn.execute('PRAGMA foreign_key_check').fetchone():
+                    raise ValidationError('升級時資料關聯檢查失敗；原資料已備份。')
+        finally:
+            self.conn.execute('PRAGMA foreign_keys=ON')
 
     def rows(self, sql, args=()):
         return [dict(r) for r in self.conn.execute(sql, args)]
@@ -101,7 +132,7 @@ class Store:
         with target.open('xb'):
             pass
         try:
-            with sqlite3.connect(target) as dst:
+            with closing(sqlite3.connect(target)) as dst:
                 self.conn.backup(dst)
         except Exception:
             target.unlink(missing_ok=True)
@@ -112,15 +143,26 @@ class Store:
         source = Path(source).resolve()
         if source == self.path.resolve():
             raise ValidationError('請選擇另一份備份檔案。')
-        with sqlite3.connect(f'{source.as_uri()}?mode=ro', uri=True) as src:
+        with closing(sqlite3.connect(f'{source.as_uri()}?mode=ro', uri=True)) as src:
             if src.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
                 raise ValidationError('備份檔案完整性檢查失敗。')
             required = {'students','courses','classes','enrollments','rooms','batches','exams',
                         'sessions','session_classes','allocations','assignments','history','schema_version',
                         'import_logs','generation_logs'}
             tables = {r[0] for r in src.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            if not required <= tables or src.execute('SELECT version FROM schema_version').fetchone()[0] != 1:
+            version = src.execute('SELECT version FROM schema_version').fetchone()[0] if 'schema_version' in tables else None
+            if not required <= tables or version not in (1,2):
                 raise ValidationError('這不是相容的 FOF 考試系統備份。')
+            if version == 1:
+                with tempfile.TemporaryDirectory(prefix='fof-restore-') as folder:
+                    staged = Path(folder) / 'upgrade.sqlite3'
+                    with closing(sqlite3.connect(staged)) as target:
+                        src.backup(target)
+                    upgraded = Store(staged)
+                    try:
+                        return self.restore(staged)
+                    finally:
+                        upgraded.close()
             for table in required:
                 expected=[tuple(r)[1:6] for r in self.conn.execute(f'PRAGMA table_info({table})')]
                 actual=[tuple(r)[1:6] for r in src.execute(f'PRAGMA table_info({table})')]

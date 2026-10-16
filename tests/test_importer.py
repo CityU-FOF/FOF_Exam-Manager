@@ -55,18 +55,18 @@ def test_actual_attachments_import_and_export(manager,tmp_path):
     if not root:pytest.skip('Set FOF_REFERENCE_DIR to the six private uploaded Excel files')
     files={p.name:p for p in Path(root).rglob('*.xlsx')}
     assert {'3D.xlsx','3E.xlsx','3F.xlsx','3G.xlsx'}<=set(files)
-    expected={'D':29,'E':28,'F':32,'G':33}
+    expected={'D':30,'E':28,'F':34,'G':35}
     for cls,n in expected.items():
         cs=inspect_roster(files[f'3{cls}.xlsx'])
         selected=[c for c in cs if c.recommended]
-        assert len(selected)==1 and selected[0].sheet==cls and len(selected[0].records)==n
+        assert len(selected)==1 and selected[0].sheet=='匯總' and selected[0].class_name=='3'+cls and len(selected[0].records)==n
         assert not any(r.issues for r in selected[0].records)
         manager.import_records(selected[0].records)
-    assert len(manager.students())==122
-    assert manager.db.one('SELECT COUNT(*) n FROM students')['n']==122
+    assert len(manager.students())==127
+    assert manager.db.one('SELECT COUNT(*) n FROM students')['n']==127
     # Reimport is idempotent, never doubles membership.
     rr=[r for c in inspect_roster(files['3F.xlsx']) if c.recommended for r in c.records]
-    assert len(manager.import_records(rr)['unchanged'])==32
+    assert len(manager.import_records(rr)['unchanged'])==34
     course=manager.courses()[0]
     manager.save_course({'code':course['code'],'name_cn':course['name_cn'],'name_en':'Corporate Finance','programme':course['programme'],
                          'programme_en':'Bachelor of Applied Economics Programme (Chinese)','teachers':'江宇'},course['id'])
@@ -74,10 +74,12 @@ def test_actual_attachments_import_and_export(manager,tmp_path):
     batch=manager.save_batch({'name':'實際附件驗證','academic_year':'2026–2027','semester':'第一學期','exam_type':'期中'})
     classes=manager.classes();sid=manager.create_session(batch,course['id'],{'date':'2026-10-14','start':'19:00','end':'21:00','teachers':'江宇','intake':'2026-08'},[c['id'] for c in classes],rooms)
     als={a['room_name']:a['id'] for a in manager.allocations(sid)}
-    for c in classes:manager.assign(als['G2209' if c['name'] in 'DF' else 'G2207'],c['id'])
-    assert [a['count'] for a in manager.allocations(sid)]==[61,61]
+    for c in classes:manager.assign(als['G2209' if c['name'] in ('3D','3F') else 'G2207'],c['id'])
+    assert [a['count'] for a in manager.allocations(sid)]==[63,64]
     for aid in als.values():
         path=ExcelExporter(manager).generate(aid,tmp_path/'actual-output')
         wb=load_workbook(path,data_only=True)
-        assert [wb['Attendance'].cell(i,3).value for i in range(18,79)]==[wb['Seat Plan'].cell(i,3).value for i in range(18,79)]
+        students=manager.assigned(aid=aid)
+        assert wb['Attendance']['D14'].value==len(students)
+        assert [wb['Attendance'].cell(i,3).value for i in range(18,18+len(students))]==[wb['Seat Plan'].cell(i,3).value for i in range(18,18+len(students))]
         wb.close()
