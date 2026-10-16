@@ -14,19 +14,29 @@ jobs:
         run: |
           chcp 65001 >nul
           call "首次安裝.bat" --no-pause
-      - run: .\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-      - run: .\.venv\Scripts\python.exe -m pytest -q
+      - run: '& "$env:LOCALAPPDATA\FOFExamManager\venv\Scripts\python.exe" -m pip install -r requirements-dev.txt'
+      - run: '& "$env:LOCALAPPDATA\FOFExamManager\venv\Scripts\python.exe" -m pytest -q'
         env:
           QT_QPA_PLATFORM: offscreen
-      - name: Check the launch batch file using synthetic data
+      - name: Prepare a long checkout path containing spaces
+        shell: pwsh
+        run: |
+          $longRoot = Join-Path $env:RUNNER_TEMP 'FOF install regression with spaces\FOF_Exam-Manager-6719ec4927703b04a950541cb6a3262337f46fbd'
+          New-Item -ItemType Directory -Path $longRoot -Force | Out-Null
+          Copy-Item -Path app,resources,scripts,run.py,requirements.txt,'首次安裝.bat','啟動程式.bat' -Destination $longRoot -Recurse
+          "FOF_LONG_CHECKOUT=$longRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Check reinstall and launch from the long checkout using synthetic data
         shell: cmd
         env:
           FOF_NO_PAUSE: '1'
           QT_QPA_PLATFORM: offscreen
         run: |
           chcp 65001 >nul
-          call "啟動程式.bat" --self-test "%RUNNER_TEMP%\FOF launch check"
-      - run: .\.venv\Scripts\python.exe -m PyInstaller --noconfirm --clean FOFExamManager.spec
+          call "%FOF_LONG_CHECKOUT%\首次安裝.bat" --no-pause
+          if errorlevel 1 exit /b 1
+          if exist "%FOF_LONG_CHECKOUT%\.venv" exit /b 1
+          call "%FOF_LONG_CHECKOUT%\啟動程式.bat" --self-test "%RUNNER_TEMP%\FOF launch check"
+      - run: '& "$env:LOCALAPPDATA\FOFExamManager\venv\Scripts\python.exe" -m PyInstaller --noconfirm --clean FOFExamManager.spec'
       - uses: actions/upload-artifact@v4
         with:
           name: FOFExamManager-Windows

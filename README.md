@@ -1,4 +1,4 @@
-# FOF Exam Seating & Attendance Manager v1.2.0
+# FOF Exam Seating & Attendance Manager v1.2.1
 
 澳門城市大學金融學院的離線考試座位及簽到表桌面工具。Python 3.12+、PySide6 Qt Widgets、SQLite、openpyxl；獨立專案，不修改或共用現有學生證明系統。運行時不需要網絡、帳號、CDN、API、遠端字型或雲端資料庫。
 
@@ -14,17 +14,20 @@ Windows 10/11 可直接用批次檔，無須自行輸入指令：
 
 1. 按 GitHub **Code → Download ZIP**，將整個 ZIP 解壓縮，不要在 ZIP 內直接執行。
 2. 安裝 **64 位元 Python 3.12 或更新版本**，安裝時勾選 **Add Python to PATH**。
-3. 第一次雙擊根目錄的 **`首次安裝.bat`**。它會建立 `.venv`、安裝 PySide6／openpyxl 並檢查 Qt 與官方模板；看到 **Setup completed** 後可關閉視窗。
+3. 第一次雙擊根目錄的 **`首次安裝.bat`**。它會在 `%LOCALAPPDATA%\FOFExamManager\venv` 建立獨立 Python 環境、安裝 PySide6／openpyxl 並檢查 Qt 與官方模板；看到 **Setup completed** 後可關閉視窗。套件不放在 GitHub 解壓後的長路徑內，避免 Windows 路徑長度限制。
 4. 以後雙擊根目錄的 **`啟動程式.bat`** 即可開啟系統。
 
 首次安裝套件需要網絡，日常匯入、座位編排及 Excel 輸出均可離線。批次檔會檢查 Python 版本及 64 位元環境，出錯時保留訊息供排查。資料預設仍存在 `%LOCALAPPDATA%\FOFExamManager`，不會因重新解壓程式或重新安裝套件而刪除。根目錄另附可用記事本開啟的 `使用說明.txt`。
 
+若舊版安裝在 PySide6 的 `objects-Debug`／`.qt\rcc` 路徑報 `OSError: [Errno 2] No such file or directory`，常見原因是解壓資料夾名稱加上 Qt 內部路徑超出 Windows 傳統路徑限制。下載 v1.2.1 或更新版本後重新執行「首次安裝.bat」，改用上述短路徑，會忽略程式目錄內未完成的 `.venv`，不必搬移或刪除學生資料。不需修改登錄檔或管理員權限；未完成安裝可再次執行，直到 Qt／模板檢查成功才允許由批次啟動。需要自訂環境位置的開發者可設定 `FOF_VENV_DIR` 為短且可寫入的本機路徑，安裝及啟動須使用相同設定。
+
 需要手動安裝時，可在此專案目錄開啟 PowerShell：
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe run.py
+$fofVenv = Join-Path $env:LOCALAPPDATA 'FOFExamManager\venv'
+py -3.12 -m venv $fofVenv
+& "$fofVenv\Scripts\python.exe" -m pip install -r requirements.txt
+& "$fofVenv\Scripts\python.exe" run.py
 ```
 
 `scripts/run_windows.cmd` 保留為啟動批次檔的內部入口。可在有網絡的相同 OS、架構與 Python 版本上預先執行 `pip download -r requirements.txt -d wheels`，將專案與 wheels 交給離線電腦，再用 `pip install --no-index --find-links wheels -r requirements.txt` 安裝。
@@ -86,7 +89,7 @@ Linux/macOS 原始碼開發使用 `python3 -m venv .venv`、`.venv/bin/python -m
 
 簽到表最後一欄為「備注 / Remark」，供監考員填寫；系統內部學生備註不會自動帶入此欄。
 
-開啟已有資料庫時，會自動拆分能可靠辨識的舊「中文＋拼音」姓名，並將錯放在中文欄的英文全名移到英文欄。修改前先建立同目錄 `before_name_split_<唯一碼>.sqlite3` 備份；保留原文、修讀關係、座號、鎖定及復原歷史，相關場次轉為草稿等待重新生成。已分欄的姓名保留使用者填寫的英文名，不確定的格式維持原文，可重新匯入或人工核對。修正人數及備份路徑顯示於視窗底部；視窗標題顯示 v1.2.0，方便確認正在使用新版。
+開啟已有資料庫時，會自動拆分能可靠辨識的舊「中文＋拼音」姓名，並將錯放在中文欄的英文全名移到英文欄。修改前先建立同目錄 `before_name_split_<唯一碼>.sqlite3` 備份；保留原文、修讀關係、座號、鎖定及復原歷史，相關場次轉為草稿等待重新生成。已分欄的姓名保留使用者填寫的英文名，不確定的格式維持原文，可重新匯入或人工核對。修正人數及備份路徑顯示於視窗底部；視窗標題顯示 v1.2.1，方便確認正在使用新版。
 
 亦支援 VBA 拆分後的「中文姓名／英文拼音」表頭；同時有「英文拼音」及「英文姓名」時，優先拼音並保留原文。重新生成 Excel 並選擇覆蓋或另存，舊輸出不會自動更新。4B／4C／4D／4E 原始名單已驗證為 30／28／32／26 人，共 116 人；附件及含學生資料的測試輸出不放入 repository。
 
@@ -111,8 +114,9 @@ Windows 預設 `%LOCALAPPDATA%\FOFExamManager\fof_exam.sqlite3`；Linux 預設 `
 ## 開發與驗證
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python.exe -m pytest -q
+$fofPython = Join-Path $env:LOCALAPPDATA 'FOFExamManager\venv\Scripts\python.exe'
+& $fofPython -m pip install -r requirements-dev.txt
+& $fofPython -m pytest -q
 ```
 
 將六份附件放在私人資料夾，設定 `FOF_REFERENCE_DIR` 再執行，可一併跑真實附件測試。沒有附件時該項明確 skipped，其餘測試使用合成學生。參見 [TESTING.md](TESTING.md)、[BUILD.md](BUILD.md)、[CHANGELOG.md](CHANGELOG.md)。

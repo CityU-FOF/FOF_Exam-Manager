@@ -6,6 +6,8 @@ FOF 考試座位及簽到表管理系統 — Windows 使用方法
    Python 官方下載：https://www.python.org/downloads/windows/
 3. 首次使用：雙擊「首次安裝.bat」，等待顯示 Setup completed。
    這一步需要網絡，用來安裝 PySide6 和 openpyxl。
+   v1.2.1 起套件放在 %LOCALAPPDATA%\FOFExamManager\venv 的短路徑，
+   避免 GitHub 解壓資料夾長名稱造成 Windows 安裝失敗。
 4. 日常使用：雙擊「啟動程式.bat」，即可開啟系統，毋須自行輸入指令。
    完成首次安裝後，日常匯入、編排及生成 Excel 均可離線。
 
@@ -13,3 +15,8 @@ FOF 考試座位及簽到表管理系統 — Windows 使用方法
 資料預設保存在 %LOCALAPPDATA%\FOFExamManager，不放在程式資料夾內。
 原有資料庫升級前會自動備份；重新匯入學生名單可修正授課班，已有座位仍保留。
 如出現錯誤，批次視窗會保留訊息，可複製錯誤文字尋求協助。
+
+若舊版安裝 PySide6 時出現 objects-Debug、qrc、No such file or directory：
+下載 v1.2.1 或更新版，重新執行「首次安裝.bat」。
+程式目錄內未完成的 .venv 不會再使用，無須搬移或刪除學生資料。
+安裝中斷後可以再按一次「首次安裝.bat」重試。
