@@ -41,8 +41,17 @@ def test_header_changes_sync_both_sheets_and_draft(manager,tmp_path):
         assert sheet['E10'].value=='甲老師、乙老師'
         assert sheet['D10'].value=='2025-08'
         assert '修訂公司金融' in sheet['A8'].value
-        assert sheet.protection.sheet
-        assert sheet['A1'].protection.locked
+        assert not sheet.protection.sheet
+        assert sheet.freeze_panes is None
+        assert sheet.sheet_view.topLeftCell == 'A1'
+        assert sheet.sheet_view.selection[0].activeCell == 'A1'
+        assert sheet.sheet_view.selection[0].pane is None
+        assert sheet['A1'].value == '澳門城市大學'
+        assert sheet['A2'].value == 'CITY UNIVERSITY OF MACAU'
+        assert sheet['A3'].value == '應用經濟學學士學位課程（中文學制）'
+        assert not any(sheet.row_dimensions[i].hidden for i in range(1,18))
+        assert sheet['E10'].alignment.horizontal == 'right'
+        assert sheet.row_dimensions[10].height == 16.5
         assert not sheet['C18'].protection.locked
     wb.close()
 

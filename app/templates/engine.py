@@ -6,6 +6,8 @@ from openpyxl import load_workbook
 from openpyxl.styles import Font, Alignment, Protection
 from openpyxl.worksheet.pagebreak import Break, RowBreak
 from openpyxl.worksheet.properties import PageSetupProperties
+from openpyxl.worksheet.protection import SheetProtection
+from openpyxl.worksheet.views import Selection
 
 
 def template_path():
@@ -38,11 +40,13 @@ class TemplateEngine:
             sheet.page_setup.fitToHeight = 0
             sheet.page_setup.scale = None
             sheet.print_title_rows = '1:17'
-            sheet.freeze_panes = 'A18'
-            # Prevent accidental header edits; Excel can unprotect without a password.
-            sheet.protection.sheet = True
-            sheet.protection.selectLockedCells = False
-            sheet.protection.selectUnlockedCells = False
+            # Reset the template's saved scroll/selection as well as any panes:
+            # its Attendance view starts at A4, hiding the university headings.
+            for view in sheet.views.sheetView:
+                view.pane = None
+                view.topLeftCell = 'A1'
+                view.selection = [Selection(activeCell='A1', sqref='A1')]
+            sheet.protection = SheetProtection()
             sheet.row_breaks = RowBreak()
             year = info['academic_year']
             semester = info['semester']
@@ -52,6 +56,8 @@ class TemplateEngine:
             kind_en = {'期中':'Midterm','期末':'Final'}.get(kind,kind)
             semester_en = {'第一學期':'1st Semester','第二學期':'2nd Semester','第三學期':'3rd Semester'}.get(semester,semester)
             headers = {
+                'A1': '澳門城市大學',
+                'A2': 'CITY UNIVERSITY OF MACAU',
                 'A3': info.get('programme') or '應用經濟學學士學位課程（中文學制）',
                 'A4': info.get('programme_en') or 'Bachelor of Applied Economics Programme (Chinese)',
                 'A5': f'{year}學年{semester}{kind}{title}',
@@ -65,8 +71,9 @@ class TemplateEngine:
             sheet['G12'].number_format = 'yyyy-mm-dd'
             sheet['D14'] = count
             sheet['D14'].font = Font(name='Times New Roman',size=12)
-            sheet.row_dimensions[10].height = max(30, 15*((len(info['teachers'])//32)+1))
-            sheet['E10'].alignment = Alignment(horizontal='left',vertical='center',wrap_text=True)
+            # Keep the official teacher row height (16.5pt). Long teacher lists
+            # shrink within the existing merged cell instead of raising the row.
+            sheet['E10'].alignment = Alignment(horizontal='right',vertical='center',shrink_to_fit=True)
             if not attendance:
                 sheet['C15'] = None
             for index, student in enumerate(students):

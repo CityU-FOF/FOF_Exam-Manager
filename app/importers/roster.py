@@ -11,16 +11,18 @@ def split_name(raw):
     raw = str(raw or '').strip()
     if not raw:
         return '', '', ['姓名缺失']
-    cjk = r'[\u3400-\u9fff\uf900-\ufaff·・]+'
-    latin = r"[A-Za-zÀ-ž][A-Za-zÀ-ž\s\-'’.]*"
+    # Some original rosters prefix the Chinese name with a nationality.
+    han = r'[\u3400-\u9fff\uf900-\ufaff·・]+'
+    cjk = rf'(?:[（(]{han}[）)]\s*)?{han}'
+    latin = r"[A-Za-zÀ-ž][A-Za-zÀ-ž\u0300-\u036f\s\-'’.]*"
     if re.fullmatch(cjk, raw):
         return raw, '', []
     if re.fullmatch(latin, raw):
         return '', raw, []
-    m = re.fullmatch(f'({cjk})\\s+({latin})', raw)
+    m = re.fullmatch(f'({cjk})\\s*({latin})', raw)
     if m:
         return m[1], ' '.join(m[2].split()), []
-    m = re.fullmatch(f'({latin})\\s+({cjk})', raw)
+    m = re.fullmatch(f'({latin})\\s*({cjk})', raw)
     if m:
         return m[2], ' '.join(m[1].split()), []
     return raw, '', ['姓名需要人工確認（已保留原文）']
@@ -106,11 +108,21 @@ def inspect_roster(path):
                 sid, issues = cell_text(idcell)
                 cn, en = val('cn'), val('en')
                 raw = '\n'.join(filter(None, [cn, en]))
-                if not en:
-                    cn, en, name_issues = split_name(cn)
+                if cn:
+                    cn, embedded_en, name_issues = split_name(cn)
+                    # Existing explicit two-column names need no new script
+                    # restriction. Still flag an ambiguous mixed-script cell.
+                    mixed = re.search(r'[\u3400-\u9fff\uf900-\ufaff]', cn) and re.search(r'[A-Za-zÀ-ž]', cn)
+                    if not en or mixed:
+                        issues += name_issues
+                    # The separate English column can contain a nickname. The
+                    # official full name/pinyin in 姓名 takes precedence.
+                    en = embedded_en or en
+                elif en:
+                    _, _, name_issues = split_name(en)
                     issues += name_issues
-                elif not cn:
-                    issues.append('中文姓名缺失，需要人工確認')
+                else:
+                    issues.append('姓名缺失')
                 if not sid or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', sid):
                     issues.append('空白或錯誤學號')
                 admin = val('class')
