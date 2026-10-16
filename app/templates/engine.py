@@ -76,6 +76,9 @@ class TemplateEngine:
             sheet['E10'].alignment = Alignment(horizontal='right',vertical='center',shrink_to_fit=True)
             if not attendance:
                 sheet['C15'] = None
+            else:
+                write_text(sheet['G16'], '備注')
+                write_text(sheet['G17'], 'Remark')
             for index, student in enumerate(students):
                 row = 18+index
                 for col in range(1,8):

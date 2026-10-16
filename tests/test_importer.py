@@ -28,6 +28,20 @@ def test_ambiguous_name_retained():
     assert cn==raw and issues
 
 
+@pytest.mark.parametrize('pinyin_first',[True,False])
+def test_vba_pinyin_header_wins_over_nickname(tmp_path,pinyin_first):
+    wb=Workbook();s=wb.active
+    names=['英文拼音','英文姓名'] if pinyin_first else ['英文姓名','英文拼音']
+    values=['CHAN TAI MAN','David'] if pinyin_first else ['David','CHAN TAI MAN']
+    s.append(['帳號','中文姓名',*names,'班級','科目代碼'])
+    s.append(['F20990100001','陳大文',*values,'4B','BAE409'])
+    path=tmp_path/'vba-output.xlsx';wb.save(path)
+    record=inspect_roster(path)[0].records[0]
+    assert (record.chinese_name,record.english_name)==('陳大文','CHAN TAI MAN')
+    assert 'David' in record.raw_name
+    assert not record.issues
+
+
 def test_official_combined_name_overrides_nickname_and_allows_english_only(manager,tmp_path):
     wb=Workbook();s=wb.active
     s.append(['學號','姓名','英文姓名','班級','科目代碼'])

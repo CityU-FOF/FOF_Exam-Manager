@@ -53,6 +53,9 @@ def test_header_changes_sync_both_sheets_and_draft(manager,tmp_path):
         assert sheet['E10'].alignment.horizontal == 'right'
         assert sheet.row_dimensions[10].height == 16.5
         assert not sheet['C18'].protection.locked
+    assert wb['Attendance']['G16'].value=='備注'
+    assert wb['Attendance']['G17'].value=='Remark'
+    assert wb['Seat Plan']['G16'].value is None
     wb.close()
 
 

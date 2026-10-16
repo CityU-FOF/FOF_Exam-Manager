@@ -9,6 +9,34 @@ from app.models.records import ValidationError, CapacityError
 class Manager:
     def __init__(self, store):
         self.db = store
+        self.name_repair_count = self.repair_combined_names()
+
+    def repair_combined_names(self):
+        """Repair recognisable combined names saved by older importers."""
+        from app.importers.roster import split_name
+        updates = []
+        for student in self.db.rows('SELECT * FROM students'):
+            cn, en, issues = split_name(student['chinese_name'])
+            if issues or not en:
+                continue
+            if (cn, en) == (student['chinese_name'], student['english_name']):
+                continue
+            raw = student['raw_name'] or '\n'.join(filter(None, [student['chinese_name'], student['english_name']]))
+            updates.append((cn, en, raw, student['id']))
+        self.name_repair_backup = None
+        if not updates:
+            return 0
+        # Finish the backup before changing any identities or session status.
+        self.name_repair_backup = self.db.path.with_name('before_name_split_' + uid()[:12] + '.sqlite3')
+        self.db.backup(self.name_repair_backup)
+        with self.db.conn:
+            for cn, en, raw, identifier in updates:
+                self.db.conn.execute('UPDATE students SET chinese_name=?,english_name=?,raw_name=? WHERE id=?',
+                                     (cn, en, raw, identifier))
+                self.db.conn.execute('''UPDATE sessions SET status='草稿',modified=? WHERE id IN
+                    (SELECT al.session_id FROM allocations al JOIN assignments a ON a.allocation_id=al.id
+                     WHERE a.student_id=?)''', (now(), identifier))
+        return len(updates)
 
     def courses(self):
         return self.db.rows('SELECT * FROM courses ORDER BY code')

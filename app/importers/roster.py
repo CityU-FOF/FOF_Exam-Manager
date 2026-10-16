@@ -50,6 +50,7 @@ ALIASES = {
     'id': {'帳號', '学号', '學號', 'studentid', 'studentno', 'id'},
     'cn': {'姓名', '中文姓名', 'chinesename', 'name'},
     'en': {'英文姓名', 'englishname'},
+    'pinyin': {'英文拼音', '拼音姓名', '姓名拼音', '拼音', 'pinyin', 'romanizedname'},
     'class': {'班級', '班级', 'class'},
     'code': {'科目代碼', '科目代码', 'coursecode'},
     'course': {'科目名稱', '科目名称', 'coursename'},
@@ -78,6 +79,12 @@ def inspect_roster(path):
                     for key, aliases in ALIASES.items():
                         if norm(cell.value) in aliases:
                             mapping[key] = cell.column
+                # VBA output may retain both a pinyin column and a nickname
+                # column. Prefer the explicit pinyin regardless of column order.
+                if 'pinyin' in mapping:
+                    if 'en' in mapping:
+                        mapping['alternate_en'] = mapping['en']
+                    mapping['en'] = mapping['pinyin']
                 if 'id' in mapping and ('cn' in mapping or 'en' in mapping):
                     columns, header = mapping, row[0].row
                     break
@@ -107,7 +114,7 @@ def inspect_roster(path):
                     continue
                 sid, issues = cell_text(idcell)
                 cn, en = val('cn'), val('en')
-                raw = '\n'.join(filter(None, [cn, en]))
+                raw = '\n'.join(dict.fromkeys(filter(None, [cn, en, val('alternate_en')])))
                 if cn:
                     cn, embedded_en, name_issues = split_name(cn)
                     # Existing explicit two-column names need no new script

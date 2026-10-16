@@ -74,3 +74,19 @@ def test_open_output_uses_local_file_url(qtbot,manager,tmp_path,monkeypatch):
     win=MainWindow(manager);qtbot.addWidget(win);win.last_output=tmp_path
     calls=[];monkeypatch.setattr(QDesktopServices,'openUrl',lambda url:calls.append(url) or True)
     win.open_output();assert len(calls)==1 and calls[0].isLocalFile()
+
+
+def test_combined_names_preview_and_save(qtbot,manager,tmp_path,monkeypatch):
+    wb=Workbook();s=wb.active
+    s.append(['帳號','姓名','英文姓名','班級','科目代碼'])
+    s.append(['F20990100001','陳大文 CHAN TAI MAN','David','4B','BAE409'])
+    path=tmp_path/'original.xlsx';wb.save(path)
+    dialog=ImportDialog(manager,[path]);qtbot.addWidget(dialog)
+    assert dialog.preview.item(0,1).text()=='陳大文'
+    assert dialog.preview.item(0,2).text()=='CHAN TAI MAN'
+    monkeypatch.setattr(QMessageBox,'question',lambda *a,**k:QMessageBox.StandardButton.Yes)
+    dialog.commit()
+    win=MainWindow(manager);qtbot.addWidget(win)
+    assert 'v1.1.3' in win.windowTitle()
+    assert win.students_table.item(0,1).text()=='陳大文'
+    assert win.students_table.item(0,2).text()=='CHAN TAI MAN'

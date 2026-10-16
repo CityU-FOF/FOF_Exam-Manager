@@ -102,7 +102,7 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.1.3');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
@@ -119,6 +119,8 @@ class MainWindow(QMainWindow):
         self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.session_combo.currentIndexChanged.connect(self.refresh_workflow)
         self.nav.setCurrentRow(0);self.refresh_all()
+        if manager.name_repair_count:
+            self.statusBar().showMessage(f'已拆分 {manager.name_repair_count} 個舊姓名；修正前備份：{manager.name_repair_backup}')
 
     def guard(self,callback):
         try:return callback()
@@ -634,4 +636,6 @@ class MainWindow(QMainWindow):
         path,_=QFileDialog.getOpenFileName(self,'選擇備份檔案','','SQLite (*.sqlite3)')
         if not path:return
         if QMessageBox.question(self,'還原確認','還原將取代目前資料。系統會先自動備份現有資料庫，是否繼續？')!=QMessageBox.StandardButton.Yes:return
-        backup=self.manager.db.restore(path);self.refresh_all();QMessageBox.information(self,'已還原','原資料已保存至：\n'+str(backup))
+        backup=self.manager.db.restore(path)
+        repaired=self.manager.repair_combined_names()
+        self.refresh_all();QMessageBox.information(self,'已還原','原資料已保存至：\n'+str(backup)+f'\n已拆分舊姓名：{repaired} 人')
