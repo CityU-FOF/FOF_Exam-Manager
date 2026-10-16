@@ -46,15 +46,46 @@ class FormDialog(QDialog):
 
 class ClassCards(QListWidget):
     MIME='application/x-fof-class'
+    RETURN_MIME='application/x-fof-assigned-class'
+    assignedDropped=Signal(str,str,str)
     def __init__(self,parent=None):
         super().__init__(parent)
-        self.setDragEnabled(True);self.session_id=None
+        self.setDragEnabled(True);self.setAcceptDrops(True);self.session_id=None
+
+    def dragEnterEvent(self,event):
+        if event.mimeData().hasFormat(self.RETURN_MIME):event.acceptProposedAction()
+        else:event.ignore()
+
+    def dragMoveEvent(self,event):
+        self.dragEnterEvent(event)
+
+    def dropEvent(self,event):
+        if not event.mimeData().hasFormat(self.RETURN_MIME):event.ignore();return
+        try:data=json.loads(bytes(event.mimeData().data(self.RETURN_MIME)))
+        except (ValueError,TypeError):event.ignore();return
+        if not isinstance(data,dict) or not all(isinstance(data.get(k),str) for k in ('allocation_id','class_id','session_id')):event.ignore();return
+        self.assignedDropped.emit(data['allocation_id'],data['class_id'],data['session_id']);event.acceptProposedAction()
 
     def startDrag(self,supportedActions):
         item=self.currentItem()
         if not item:return
         mime=QMimeData();mime.setData(self.MIME,json.dumps({'class_id':item.data(Qt.ItemDataRole.UserRole),'session_id':self.session_id}).encode())
         drag=QDrag(self);drag.setMimeData(mime);drag.exec(Qt.DropAction.CopyAction)
+
+
+class AssignedClassCards(QListWidget):
+    def __init__(self,allocation_id,session_id,parent=None):
+        super().__init__(parent);self.allocation_id=allocation_id;self.session_id=session_id
+        self.setDragEnabled(True)
+
+    def startDrag(self,supportedActions):
+        item=self.currentItem()
+        if not item:return
+        mime=QMimeData();mime.setData(ClassCards.RETURN_MIME,json.dumps(dict(
+            allocation_id=self.allocation_id,session_id=self.session_id,class_id=item.data(Qt.ItemDataRole.UserRole))).encode())
+        # Returning a class rebuilds the room cards, so keep the drag owned by
+        # the surviving window rather than this temporary class list.
+        drag=QDrag(self.window());drag.setMimeData(mime);drag.exec(Qt.DropAction.MoveAction)
 
 
 class RoomCards(QListWidget):

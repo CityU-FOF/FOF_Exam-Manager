@@ -6,9 +6,10 @@ from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabe
  QListWidget,QListWidgetItem,QStackedWidget,QLineEdit,QComboBox,QTableWidget,QTableWidgetItem,
  QHeaderView,QAbstractItemView,QFileDialog,QMessageBox,QDialog,QCheckBox,QTreeWidgetItem,
  QSplitter,QProgressDialog,QInputDialog,QProgressBar,QFrame,QTabWidget)
-from app.ui.widgets import FormDialog,ClassCards,RoomCards,SeatTree,SelectionDialog
+from app.ui.widgets import FormDialog,ClassCards,RoomCards,AssignedClassCards,SeatTree,SelectionDialog
 from app.ui.import_dialog import ImportDialog
 from app.ui.course_paste import CoursePasteDialog
+from app.ui.room_paste import RoomPasteDialog
 from app.ui.batch_dialog import BatchDialog
 from app.models.programmes import programme_values,PROGRAMMES,FACULTY
 from app.models.records import StudentRecord,CapacityError,ValidationError
@@ -102,7 +103,7 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.1.3');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.2.0');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
@@ -147,14 +148,21 @@ class MainWindow(QMainWindow):
         self.student_course=QComboBox();self.student_class=QComboBox();filters.addWidget(self.student_course);filters.addWidget(self.student_class)
         self.student_search.textChanged.connect(self.refresh_students);self.student_course.currentIndexChanged.connect(self.refresh_student_classes)
         self.student_class.currentIndexChanged.connect(self.refresh_students)
+        more=QHBoxLayout();layout.addLayout(more)
+        self.student_year=QComboBox();self.student_term=QComboBox();self.student_source=QComboBox()
+        for f in [self.student_year,self.student_term,self.student_source]:
+            more.addWidget(f);f.currentIndexChanged.connect(self.refresh_students)
+        button('清除篩選',self.clear_student_filters,more)
         self.class_counts=QLabel();layout.addWidget(self.class_counts)
         bar=QHBoxLayout();layout.addLayout(bar)
         button('匯入 Excel（可多選）',self.pick_import,bar)
         button('新增學生',lambda:self.guard(self.add_student),bar)
         button('編輯姓名／學號',lambda:self.guard(self.edit_student),bar)
         button('停用修讀記錄',lambda:self.guard(self.remove_student),bar)
-        button('班級預期人數',lambda:self.guard(self.expected_count),bar)
+        button('刪除選中修讀記錄',lambda:self.guard(self.delete_students),bar)
+        button('刪除所選班級名單',lambda:self.guard(lambda:self.delete_students(True)),bar)
         self.students_table=table(['學號','中文姓名','英文姓名','科目','授課班','行政班（參考）','學年','學期','匯入來源']);layout.addWidget(self.students_table)
+        self.students_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
     def build_courses(self):
         layout=self.page('科目管理','預設本科學士課程。複製整張科目表格，貼上分析後一次儲存；多人教師可由場次覆寫。')
@@ -171,6 +179,7 @@ class MainWindow(QMainWindow):
         bar=QHBoxLayout();layout.addLayout(bar)
         button('新增考場',lambda:self.guard(lambda:self.room_form()),bar)
         button('修改／停用',lambda:self.guard(lambda:self.room_form(selected_row(self.rooms_table))),bar)
+        button('貼上表格・智能分析',lambda:self.guard(self.paste_rooms),bar)
         self.rooms_table=table(['名稱','最多人數','自動座號','啟用','備註']);layout.addWidget(self.rooms_table)
 
     def build_batches(self):
@@ -191,7 +200,7 @@ class MainWindow(QMainWindow):
         self.sessions_table.cellDoubleClicked.connect(lambda *_:self.select_session(selected_row(self.sessions_table)['id'],5))
 
     def build_allocation(self):
-        layout=self.page('考場編排','將左側班級拖到考場卡片。容量不足時可自行選擇拆分學生；取消不改動資料。')
+        layout=self.page('考場編排','將左側班級拖入考場；將考場內班級拖回左側即可移出。移出只調整該考場，鎖定座位須先解除。')
         bar=QHBoxLayout();layout.addLayout(bar)
         button('復原',lambda:self.guard(lambda:self.history(False)),bar)
         button('重做',lambda:self.guard(lambda:self.history(True)),bar)
@@ -199,6 +208,7 @@ class MainWindow(QMainWindow):
         button('調整參加班級',lambda:self.guard(self.edit_session_classes),bar)
         button('驗證並完成編排',lambda:self.guard(self.complete_session),bar)
         button('編輯選中考場座位',self.open_seat_editor,bar)
+        button('移出選中考場班級',lambda:self.guard(self.return_room_class),bar)
         split=QSplitter();layout.addWidget(split,1)
         self.class_cards=ClassCards();self.class_cards.setSpacing(10);split.addWidget(self.class_cards)
         self.room_cards=RoomCards();split.addWidget(self.room_cards)
@@ -208,6 +218,7 @@ class MainWindow(QMainWindow):
         self.room_cards.classDropped.connect(self.class_dropped)
         self.room_cards.itemDoubleClicked.connect(lambda _:self.open_seat_editor())
         self.class_cards.itemDoubleClicked.connect(lambda _:self.guard(self.assign_selected))
+        self.class_cards.assignedDropped.connect(lambda aid,cid,sid:self.guard(lambda:self.return_assigned_class(aid,cid,sid)))
 
     def build_seats(self):
         layout=self.page('座位調整','上下拖放學生重新排序。鎖定者保留實際座號；名單次序和座號分開保存。')
@@ -237,12 +248,19 @@ class MainWindow(QMainWindow):
         for placeholder in ['科目篩選','日期 YYYY-MM-DD','考場篩選']:
             f=QLineEdit();f.setPlaceholderText(placeholder);f.textChanged.connect(self.refresh_generation);filters.addWidget(f);self.gen_filters.append(f)
         self.only_complete=QCheckBox('只顯示已完成項目');self.only_complete.toggled.connect(self.refresh_generation);filters.addWidget(self.only_complete)
+        ordering=QHBoxLayout();layout.addLayout(ordering)
+        self.gen_batch=QComboBox();self.gen_batch.currentIndexChanged.connect(self.refresh_generation);ordering.addWidget(self.gen_batch)
+        self.gen_sort=QComboBox()
+        for label,value in [('按批次／科目排列','batch'),('按最後修改：新到舊','modified'),('按最後生成：新到舊','generated')]:self.gen_sort.addItem(label,value)
+        self.gen_sort.currentIndexChanged.connect(self.refresh_generation);ordering.addWidget(self.gen_sort)
+        ordering.addWidget(QLabel('同一場次的考場保持相鄰'))
         bar=QHBoxLayout();layout.addLayout(bar)
         button('全選',lambda:self.check_generation(True),bar);button('取消全選',lambda:self.check_generation(False),bar)
         button('生成選中項目',lambda:self.guard(self.generate_selected),bar)
         button('打開輸出資料夾',lambda:self.guard(self.open_output),bar)
         button('打開已生成文件',lambda:self.guard(self.open_generated),bar)
-        self.generation_table=table(['選取','科目','日期','時間','考場','人數','狀態','最後修改','最後生成'])
+        button('刪除勾選考場項目',lambda:self.guard(self.delete_generation),bar)
+        self.generation_table=table(['選取','批次','科目','日期','時間','考場','人數','狀態','最後修改','最後生成'])
         self.generation_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.generation_table)
         self.generation_results=QListWidget();layout.addWidget(self.generation_results,1)
@@ -271,6 +289,10 @@ class MainWindow(QMainWindow):
     def refresh_all(self):
         populate(self.session_combo,[(f'{s["code"]} · {s["date"]} {s["start"]} · {s["batch_name"]}',s['id']) for s in self.manager.sessions()])
         populate(self.student_course,[(c['code']+' '+c['name_cn'],c['id']) for c in self.manager.courses()],'全部科目')
+        rows=self.manager.students()
+        for combo,key,label in [(self.student_year,'academic_year','全部學年'),(self.student_term,'semester','全部學期'),(self.student_source,'source','全部匯入來源')]:
+            populate(combo,[(v,v) for v in sorted({r[key] for r in rows if r[key]})],label)
+        populate(self.gen_batch,[(b['name'],b['id']) for b in self.manager.batches()],'全部批次')
         self.refresh_student_classes();self.refresh_courses();self.refresh_rooms();self.refresh_batches();self.refresh_workflow()
         stats=self.manager.dashboard()
         self.stats.setText(f'學生 {stats["students"]}    科目 {stats["courses"]}    批次 {stats["batches"]}    場次 {stats["sessions"]}\n'
@@ -285,9 +307,16 @@ class MainWindow(QMainWindow):
         self.refresh_students()
 
     def refresh_students(self):
-        fill_table(self.students_table,self.manager.students(self.student_search.text(),self.student_course.currentData(),self.student_class.currentData()),
+        rows=self.manager.students(self.student_search.text(),self.student_course.currentData(),self.student_class.currentData())
+        rows=[r for r in rows if all(not combo.currentData() or r[key]==combo.currentData() for combo,key in
+              [(self.student_year,'academic_year'),(self.student_term,'semester'),(self.student_source,'source')])]
+        fill_table(self.students_table,rows,
                    ['student_no','chinese_name','english_name','course_code','class_name','administrative_class','academic_year','semester','source'])
-        self.class_counts.setText('  /  '.join(f'{c["code"]} {c["name"]}：{c["count"]} 人'+(f'（預期 {c["expected"]}）' if c['expected'] is not None else '') for c in self.manager.classes(self.student_course.currentData())))
+        self.class_counts.setText(f'目前篩選：{len(rows)} 筆修讀記錄 · {len({r["student_no"] for r in rows})} 位學生 · {len({r["class_id"] for r in rows})} 個授課班（可 Ctrl／Shift 多選刪除）')
+
+    def clear_student_filters(self):
+        self.student_search.clear()
+        for combo in [self.student_course,self.student_class,self.student_year,self.student_term,self.student_source]:combo.setCurrentIndex(0)
 
     def refresh_courses(self):
         search=self.course_search.text().lower()
@@ -323,12 +352,22 @@ class MainWindow(QMainWindow):
         allocations=self.manager.allocations(sid)
         for al in allocations:
             remain,_=self.manager.remaining(al['id'])
-            item=QListWidgetItem();item.setData(Qt.ItemDataRole.UserRole,al['id']);item.setSizeHint(QSize(350,135));self.room_cards.addItem(item)
+            class_ids=list(dict.fromkeys(r['class_id'] for r in assigned if r['allocation_id']==al['id']))
+            item=QListWidgetItem();item.setData(Qt.ItemDataRole.UserRole,al['id']);item.setSizeHint(QSize(350,130+min(len(class_ids),4)*30));self.room_cards.addItem(item)
             card=QFrame();card.setObjectName('roomCard');v=QVBoxLayout(card)
             v.addWidget(QLabel(f'{al["room_name"]}     {al["count"]} / {al["capacity"]} 人'))
             bar=QProgressBar();bar.setRange(0,al['capacity']);bar.setValue(al['count']);v.addWidget(bar)
             v.addWidget(QLabel(f'剩餘可用 {remain} 座位 · 拖入班級或雙擊編輯座位'))
-            card.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents);self.room_cards.setItemWidget(item,card)
+            if class_ids:
+                class_list=AssignedClassCards(al['id'],sid)
+                class_list.setFixedHeight(min(len(class_ids),4)*30+8)
+                for cid in class_ids:
+                    rr=[r for r in assigned if r['allocation_id']==al['id'] and r['class_id']==cid]
+                    entry=QListWidgetItem(f'{rr[0]["class_name"]} 班 · {len(rr)} 人（拖回左側移出）')
+                    entry.setData(Qt.ItemDataRole.UserRole,cid);class_list.addItem(entry)
+                class_list.itemPressed.connect(lambda _,current=item:self.room_cards.setCurrentItem(current))
+                v.addWidget(class_list)
+            self.room_cards.setItemWidget(item,card)
         self.allocation_stats.setText(f'已分配：{len(assigned)} 人\n未分配：{len(pending)} 人\n'
                                      +'\n'.join(f'{a["room_name"]} 使用率：{a["count"]/a["capacity"]:.0%}' for a in allocations))
         errors=self.manager.validate(sid,False);self.warnings.setText('\n'.join(errors) or '資料檢查：目前沒有衝突')
@@ -362,12 +401,22 @@ class MainWindow(QMainWindow):
         course,dt,room=[f.text().lower() for f in self.gen_filters]
         for al in self.manager.allocations():
             s=sessions[al['session_id']]
+            if self.gen_batch.currentData() and s['batch_id']!=self.gen_batch.currentData():continue
             valid=not self.manager.validate(s['id'])
             if course not in (s['code']+' '+s['name_cn']).lower() or dt not in s['date'] or room not in al['room_name'].lower():continue
             if self.only_complete.isChecked() and (not valid or s['status'] not in ('已完成編排','已生成文件')):continue
             generated=self.manager.db.one("SELECT * FROM generation_logs WHERE allocation_id=? AND status='成功' ORDER BY created DESC,rowid DESC LIMIT 1",(al['id'],))
-            rows.append(dict(al,course=s['code']+' '+s['name_cn'],date=s['date'],time=s['start']+'–'+s['end'],status=s['status'] if valid else '待處理錯誤',modified=s['modified'],generated=generated['created'] if generated else '',path=generated['path'] if generated else ''))
-        fill_table(self.generation_table,rows,['id','course','date','time','room_name','count','status','modified','generated'])
+            rows.append(dict(al,batch_id=s['batch_id'],batch_name=s['batch_name'],course=s['code']+' '+s['name_cn'],date=s['date'],time=s['start']+'–'+s['end'],status=s['status'] if valid else '待處理錯誤',modified=s['modified'],generated=generated['created'] if generated else '',path=generated['path'] if generated else ''))
+        rows.sort(key=lambda r:(r['batch_name'],r['batch_id'],r['course'],r['date'],r['time'],r['session_id'],r['room_name']))
+        sort=self.gen_sort.currentData()
+        if sort in ('modified','generated'):
+            latest={}
+            for r in rows:latest[r['session_id']]=max(latest.get(r['session_id'],''),r[sort])
+            rows.sort(key=lambda r:latest[r['session_id']],reverse=True)
+        for r in rows:
+            r['modified_display']=r['modified'].replace('T',' ')[:19]
+            r['generated_display']=r['generated'].replace('T',' ')[:19] or '—'
+        fill_table(self.generation_table,rows,['id','batch_name','course','date','time','room_name','count','status','modified_display','generated_display'])
         for i,r in enumerate(rows):
             item=self.generation_table.item(i,0);item.setText('');item.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable|Qt.ItemFlag.ItemIsSelectable)
             item.setCheckState(Qt.CheckState.Checked if r['id'] in checked else Qt.CheckState.Unchecked)
@@ -410,6 +459,10 @@ class MainWindow(QMainWindow):
         d=CoursePasteDialog(self.manager,self)
         if d.exec()==QDialog.DialogCode.Accepted:self.refresh_all()
 
+    def paste_rooms(self):
+        d=RoomPasteDialog(self.manager,self)
+        if d.exec()==QDialog.DialogCode.Accepted:self.refresh_all()
+
     def add_student(self):
         courses=[(c['code']+' '+c['name_cn'],c['code']) for c in self.manager.courses()]
         if not courses:raise ValidationError('請先建立科目。')
@@ -440,14 +493,50 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(self,'停用修讀',f'停用 {r["course_code"]} {r["class_name"]} 的此學生？\n其他科目與已編排座位會保留；已有座位必須在輸出前人工移除。')==QMessageBox.StandardButton.Yes:
             self.manager.deactivate_enrollment(r['enrollment_id']);self.refresh_all()
 
-    def expected_count(self):
-        cid=self.student_class.currentData()
-        if not cid:raise ValidationError('請先篩選一個班級。')
-        c=next(c for c in self.manager.classes() if c['id']==cid)
-        n,ok=QInputDialog.getInt(self,'預期人數','實際人數 '+str(c['count'])+'；請輸入已確認的預期人數：',c['expected'] if c['expected'] is not None else c['count'],0,999)
-        if ok:
-            with self.manager.db.conn:self.manager.db.conn.execute('UPDATE classes SET expected=? WHERE id=?',(n,cid))
-            self.refresh_all()
+    def delete_students(self,whole_class=False):
+        if whole_class:
+            cid=self.student_class.currentData()
+            if not cid:raise ValidationError('請先在班級篩選選取要刪除的授課班。')
+            c=next(c for c in self.manager.classes() if c['id']==cid)
+            identifiers=[r['id'] for r in self.manager.db.rows('SELECT id FROM enrollments WHERE class_id=?',(cid,))]
+            scope=f'{c["code"]} {c["name"]} 班全部 {len(identifiers)} 筆修讀記錄（包括停用記錄，不限目前搜尋結果）'
+        else:
+            rows=sorted({index.row() for index in self.students_table.selectedIndexes()})
+            identifiers=[self.students_table.item(row,0).data(Qt.ItemDataRole.UserRole)['enrollment_id'] for row in rows]
+            scope=f'選中的 {len(identifiers)} 筆修讀記錄'
+        if not identifiers:raise ValidationError('請先選取要刪除的記錄。')
+        text=f'刪除{scope}？\n系統先備份資料庫；此修讀記錄的座位亦會刪除，其他科目修讀保留。相關場次復原歷史會清除，已有 Excel 檔案保留。'
+        if QMessageBox.question(self,'刪除名單',text)!=QMessageBox.StandardButton.Yes:return
+        self.manager.delete_enrollments(identifiers);self.refresh_all()
+
+    def return_assigned_class(self,aid,cid,sid):
+        if sid!=self.current_session():raise ValidationError('請在同一場次內移出班級。')
+        allocation=next((a for a in self.manager.allocations(sid) if a['id']==aid),None)
+        if not allocation:raise ValidationError('考場已變更，請重新選取。')
+        rows=[r for r in self.manager.assigned(aid=aid) if r['class_id']==cid]
+        if not rows:raise ValidationError('此班在該考場沒有學生。')
+        if QMessageBox.question(self,'移回待分配',f'將 {allocation["room_name"]} 的 {rows[0]["class_name"]} 班 {len(rows)} 人移回待分配？其他考場編排保持不變。')!=QMessageBox.StandardButton.Yes:return
+        self.manager.unassign([r['id'] for r in rows]);self.refresh_all()
+
+    def return_room_class(self):
+        item=self.room_cards.currentItem()
+        if not item:raise ValidationError('請先選取考場。')
+        aid=item.data(Qt.ItemDataRole.UserRole)
+        rows=self.manager.assigned(aid=aid)
+        classes=list(dict.fromkeys(r['class_id'] for r in rows))
+        if not classes:raise ValidationError('此考場沒有已分配學生。')
+        labels=[next(r['class_name'] for r in rows if r['class_id']==cid)+' 班' for cid in classes]
+        label,ok=QInputDialog.getItem(self,'移出考場','選擇要移回待分配的班級',labels,0,False)
+        if ok:self.return_assigned_class(aid,classes[labels.index(label)],self.current_session())
+
+    def delete_generation(self):
+        rows=[self.generation_table.item(i,0).data(Qt.ItemDataRole.UserRole) for i in range(self.generation_table.rowCount())
+              if self.generation_table.item(i,0).checkState()==Qt.CheckState.Checked]
+        if not rows:raise ValidationError('請先勾選要刪除的考場項目。')
+        details='\n'.join(f'{r["course"]} · {r["date"]} · {r["room_name"]} · {r["count"]} 人' for r in rows)
+        text=f'刪除以下 {len(rows)} 個考場項目及其座位編排？\n{details}\n先備份資料庫；學生回到待分配，其他考場保持不變，相關場次復原歷史清除。已有 Excel 檔案保留。'
+        if QMessageBox.question(self,'刪除考場項目',text)!=QMessageBox.StandardButton.Yes:return
+        self.manager.delete_allocations([r['id'] for r in rows]);self.refresh_all()
 
     def delete_batch(self):
         r=selected_row(self.batches_table)

@@ -78,6 +78,10 @@ class Manager:
         return self._save('courses', values, identifier)
 
     def save_room(self, values, identifier=None):
+        self.validate_room(values,identifier)
+        return self._save('rooms', values, identifier)
+
+    def validate_room(self, values, identifier=None):
         if not values.get('name','').strip() or int(values.get('capacity',0)) <= 0:
             raise ValidationError('請填寫考場名稱及正整數容量。')
         self.seat_pool(values)
@@ -95,7 +99,62 @@ class Manager:
             used = self.db.rows('SELECT a.seat FROM assignments a JOIN allocations al ON al.id=a.allocation_id WHERE al.room_id=?',(identifier,))
             if any(x['seat'] not in self.seat_pool(values) for x in used):
                 raise ValidationError('有已使用座位被移除，請先調整編排。')
-        return self._save('rooms', values, identifier)
+
+    def save_rooms(self, records):
+        prepared=[];seen=set()
+        for row in records:
+            name=str(row['name']).strip().upper()
+            capacity=str(row['capacity']).strip()
+            if not capacity.isascii() or not capacity.isdigit():raise ValidationError('最多人數須為正整數。')
+            if name in seen:raise ValidationError('同一考場只能保留一列，請核對重複容量。')
+            seen.add(name)
+            old=self.db.one('SELECT * FROM rooms WHERE UPPER(name)=?',(name,))
+            values=dict(name=name,capacity=int(capacity),usable_seats='')
+            self.validate_room(values,old['id'] if old else None)
+            prepared.append((old,values))
+        with self.db.conn:
+            for old,v in prepared:
+                if old:
+                    self.db.conn.execute('UPDATE rooms SET capacity=?,usable_seats=? WHERE id=?',(v['capacity'],'',old['id']))
+                    self.db.conn.execute("UPDATE sessions SET status='草稿',modified=? WHERE id IN (SELECT session_id FROM allocations WHERE room_id=?)",(now(),old['id']))
+                else:self.db.conn.execute('INSERT INTO rooms(id,name,capacity,enabled) VALUES(?,?,?,1)',(uid(),v['name'],v['capacity']))
+
+    def delete_enrollments(self, identifiers):
+        identifiers=set(identifiers)
+        records=[r for r in self.db.rows('SELECT * FROM enrollments') if r['id'] in identifiers]
+        if len(records)!=len(identifiers):raise ValidationError('名單已變更，請重新選取。')
+        if not records:return
+        self.db.backup(self.db.path.with_name('before_roster_delete_'+uid()[:12]+'.sqlite3'))
+        classes={r['class_id'] for r in records}
+        sessions={r['session_id'] for r in self.db.rows('SELECT * FROM session_classes') if r['class_id'] in classes}
+        affected={r['allocation_id'] for r in self.assigned() if r['enrollment_id'] in identifiers}
+        with self.db.conn:
+            for identifier in identifiers:
+                self.db.conn.execute('DELETE FROM assignments WHERE enrollment_id=?',(identifier,))
+                self.db.conn.execute('DELETE FROM enrollments WHERE id=?',(identifier,))
+            for aid in affected:self.renumber(aid)
+            for cid in classes:
+                if not self.db.one('SELECT id FROM enrollments WHERE class_id=?',(cid,)):
+                    self.db.conn.execute('DELETE FROM session_classes WHERE class_id=?',(cid,))
+                    self.db.conn.execute('DELETE FROM classes WHERE id=?',(cid,))
+            for record in records:
+                if not self.db.one('SELECT id FROM enrollments WHERE student_id=?',(record['student_id'],)):
+                    self.db.conn.execute('DELETE FROM students WHERE id=?',(record['student_id'],))
+            for sid in sessions:
+                self.db.conn.execute('DELETE FROM history WHERE session_id=?',(sid,))
+                self.db.conn.execute("UPDATE sessions SET status='草稿',modified=? WHERE id=?",(now(),sid))
+
+    def delete_allocations(self, identifiers):
+        identifiers=set(identifiers)
+        rows=[r for r in self.allocations() if r['id'] in identifiers]
+        if len(rows)!=len(identifiers):raise ValidationError('考場項目已變更，請重新選取。')
+        if not rows:return
+        self.db.backup(self.db.path.with_name('before_allocation_delete_'+uid()[:12]+'.sqlite3'))
+        with self.db.conn:
+            for identifier in identifiers:self.db.conn.execute('DELETE FROM allocations WHERE id=?',(identifier,))
+            for sid in {r['session_id'] for r in rows}:
+                self.db.conn.execute('DELETE FROM history WHERE session_id=?',(sid,))
+                self.db.conn.execute("UPDATE sessions SET status='草稿',modified=? WHERE id=?",(now(),sid))
 
     def save_batch(self, values, identifier=None):
         from app.models.programmes import FACULTY,programme_values
@@ -574,9 +633,6 @@ class Manager:
             if {r['seat'] for r in rows}&{r['seat'] for r in others}:errors.append('合場考試座號重複。')
             try:self.check_room_conflict(sid,al['room_id'])
             except ValidationError as e:errors.append(str(e))
-        for c in self.classes():
-            if c['id'] in {p['class_id'] for p in participants} and c['expected'] is not None and c['expected']!=c['count']:
-                errors.append(f'{c["name"]} 班預期 {c["expected"]} 人，實際 {c["count"]} 人，請確認並更新預期人數。')
         return list(dict.fromkeys(errors))
 
     def complete(self,sid):
