@@ -24,7 +24,8 @@ def test_four_class_acceptance(manager,tmp_path):
             assert s['D14'].value==len(rows)
             assert [s.cell(i,3).value for i in range(18,18+len(rows))]==[r['student_no'] for r in rows]
             assert [s.cell(i,2).value for i in range(18,18+len(rows))]==[r['seat'] for r in rows]
-            assert s.print_title_rows=='$1:$17'
+            assert s.print_title_rows is None
+            assert s.print_title_cols is None
             assert not s.row_breaks.brk
             assert s.sheet_properties.pageSetUpPr.autoPageBreaks
             assert s.page_setup.fitToWidth==1

@@ -39,7 +39,8 @@ class TemplateEngine:
             sheet.page_setup.fitToWidth = 1
             sheet.page_setup.fitToHeight = 0
             sheet.page_setup.scale = None
-            sheet.print_title_rows = '1:17'
+            # Keep the template's non-repeating titles: subsequent pages
+            # continue the roster without duplicating the header block.
             # Reset the template's saved scroll/selection as well as any panes:
             # its Attendance view starts at A4, hiding the university headings.
             for view in sheet.views.sheetView:
