@@ -21,6 +21,25 @@ def write_text(cell, value):
     cell.data_type = 's'
 
 
+def class_seat_index(students):
+    """Compress actual occupied seats, never bridge gaps or use list numbers."""
+    groups={}
+    for student in students:
+        groups.setdefault(student['class_name'],set()).add(int(student['seat']))
+    lines=[]
+    for name,seats in sorted(groups.items()):
+        runs=[];start=end=None
+        for seat in sorted(seats):
+            if start is None:start=end=seat
+            elif seat==end+1:end=seat
+            else:
+                runs.append(f'{start:03d}' if start==end else f'{start:03d}–{end:03d}')
+                start=end=seat
+        if start is not None:runs.append(f'{start:03d}' if start==end else f'{start:03d}–{end:03d}')
+        lines.append(f'{name}：'+ '、'.join(runs))
+    return lines
+
+
 class TemplateEngine:
     def render(self, info, students):
         wb = load_workbook(template_path(), keep_links=False)
@@ -112,6 +131,18 @@ class TemplateEngine:
                 last+=6
                 for row in range(18+count,last+1):
                     for col in range(6,8):sheet.cell(row,col).protection=Protection(locked=False)
+                if info.get('include_class_index'):
+                    for text in class_seat_index(students):
+                        last+=1
+                        sheet.merge_cells(start_row=last,start_column=1,end_row=last,end_column=7)
+                        cell=sheet.cell(last,1)
+                        write_text(cell,'班級座號索引 · '+text)
+                        cell.font=Font(name='Times New Roman',size=9,color='777777')
+                        cell.alignment=Alignment(horizontal='left',vertical='center',wrap_text=True)
+                        # Allocate enough height even when randomised seats
+                        # produce many isolated numbers rather than ranges.
+                        units=sum(2 if ord(c)>255 else 1 for c in cell.value)
+                        sheet.row_dimensions[last].height=max(15,13*((units+99)//100))
             # Excel calculates vertical pagination using the printable height.
             # Manual 340pt body breaks leave large unused areas after scaling.
             sheet.print_area=f'A1:G{last}'

@@ -548,6 +548,22 @@ class Manager:
         al=next(a for a in self.allocations() if a['id']==aid)
         with self.mutation(al['session_id']): self.renumber(aid,order)
 
+    def shuffle_seats(self,aid):
+        """Shuffle unlocked students among occupied slots in just this room."""
+        from random import SystemRandom
+        allocation=self.db.one('SELECT * FROM allocations WHERE id=?',(aid,))
+        if not allocation:raise ValidationError('請先選擇考場。')
+        slots=[r for r in self.assigned(aid=aid) if not r['locked']]
+        if len(slots)<2:raise ValidationError('至少需要兩位未鎖定座號的學生，才可隨機打散。')
+        original=[r['id'] for r in slots];order=list(original)
+        rng=SystemRandom()
+        while order==original:rng.shuffle(order)
+        with self.mutation(allocation['session_id']):
+            for identifier in order:
+                self.db.conn.execute('UPDATE assignments SET seat=? WHERE id=?',('tmp-'+identifier,identifier))
+            for slot,identifier in zip(slots,order):
+                self.db.conn.execute('UPDATE assignments SET seat=?,position=? WHERE id=?',(slot['seat'],slot['position'],identifier))
+
     def unassign(self,assignment_ids):
         rows=[r for r in self.assigned() if r['id'] in set(assignment_ids)]
         if not rows: return

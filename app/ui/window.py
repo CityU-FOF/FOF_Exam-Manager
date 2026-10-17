@@ -103,7 +103,7 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.2.3');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.3.0');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
@@ -235,6 +235,7 @@ class MainWindow(QMainWindow):
         bar2=QHBoxLayout();layout.addLayout(bar2)
         button('復原',lambda:self.guard(lambda:self.history(False)),bar2)
         button('重做',lambda:self.guard(lambda:self.history(True)),bar2)
+        button('隨機打散座位',lambda:self.guard(self.shuffle_seats),bar2)
         button('保存草稿',lambda:QMessageBox.information(self,'已保存','每次操作均已在資料庫交易中自動保存。'),bar2)
         button('返回考場編排',lambda:self.nav.setCurrentRow(5),bar2)
         self.seat_available=QLabel();self.seat_available.setWordWrap(True);layout.addWidget(self.seat_available)
@@ -254,6 +255,9 @@ class MainWindow(QMainWindow):
         for label,value in [('按批次／科目排列','batch'),('按最後修改：新到舊','modified'),('按最後生成：新到舊','generated')]:self.gen_sort.addItem(label,value)
         self.gen_sort.currentIndexChanged.connect(self.refresh_generation);ordering.addWidget(self.gen_sort)
         ordering.addWidget(QLabel('同一場次的考場保持相鄰'))
+        self.include_class_index=QCheckBox('簽到表末尾附班級座號索引（細字）')
+        self.include_class_index.setToolTip('按實際座號列出各授課班的連續範圍及零散座號；座位表不加標記。')
+        layout.addWidget(self.include_class_index)
         bar=QHBoxLayout();layout.addLayout(bar)
         button('全選',lambda:self.check_generation(True),bar);button('取消全選',lambda:self.check_generation(False),bar)
         button('生成選中項目',lambda:self.guard(self.generate_selected),bar)
@@ -668,6 +672,17 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(self,'移回待分配','將選取學生移出考場？修讀記錄不會刪除。')==QMessageBox.StandardButton.Yes:
             self.manager.unassign(ids);self.refresh_all()
 
+    def shuffle_seats(self):
+        aid=self.seat_room.currentData()
+        if not aid:raise ValidationError('請先選擇考場。')
+        if self.seat_search.text().strip():raise ValidationError('請先清除搜尋，再隨機打散整個考場。')
+        rows=self.manager.assigned(aid=aid)
+        unlocked=sum(not r['locked'] for r in rows)
+        if unlocked<2:raise ValidationError('至少需要兩位未鎖定座號的學生，才可隨機打散。')
+        name=next(a['room_name'] for a in self.manager.allocations() if a['id']==aid)
+        if QMessageBox.question(self,'隨機打散座位',f'隨機打散 {name} 的 {unlocked} 位學生？\n已鎖定的 {len(rows)-unlocked} 位學生保留座號及名單位置，其他考場保持不變。\n可按「復原」還原；完成後請重新生成 Excel。')!=QMessageBox.StandardButton.Yes:return
+        self.manager.shuffle_seats(aid);self.refresh_all()
+
     def history(self,redo):self.manager.undo(self.current_session(),redo);self.refresh_all()
 
     def complete_session(self):self.manager.complete(self.current_session());self.refresh_all();QMessageBox.information(self,'編排完成','沒有未分配學生或資料衝突，可前往文件生成中心。')
@@ -698,7 +713,7 @@ class MainWindow(QMainWindow):
                 over=box.addButton('覆蓋',QMessageBox.ButtonRole.DestructiveRole);rename=box.addButton('另存新檔',QMessageBox.ButtonRole.AcceptRole)
                 box.addButton('跳過',QMessageBox.ButtonRole.RejectRole);box.exec()
                 policy='overwrite' if box.clickedButton()==over else 'rename' if box.clickedButton()==rename else 'skip'
-            result=self.exporter.batch([aid],folder,policy)[0];results.append(result)
+            result=self.exporter.batch([aid],folder,policy,include_class_index=self.include_class_index.isChecked())[0];results.append(result)
             self.generation_results.addItem(' · '.join(result[1:]));progress.setValue(i+1)
             from PySide6.QtWidgets import QApplication
             QApplication.processEvents()

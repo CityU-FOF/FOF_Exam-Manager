@@ -36,8 +36,9 @@ class ExcelExporter:
                     raise ValidationError('輸出有殘留學生資料。')
         finally:wb.close()
 
-    def generate(self,aid,folder,policy='error'):
+    def generate(self,aid,folder,policy='error',*,include_class_index=False):
         info,students=self.manager.export_data(aid)
+        info=dict(info,include_class_index=include_class_index)
         folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
         path=folder/safe_filename(info)
         if path.exists():
@@ -74,11 +75,11 @@ class ExcelExporter:
         finally:
             if temp:temp.unlink(missing_ok=True)
 
-    def batch(self,aids,folder,policy='error',progress=None):
+    def batch(self,aids,folder,policy='error',progress=None,*,include_class_index=False):
         results=[]
         for i,aid in enumerate(aids):
             try:
-                path=self.generate(aid,folder,policy)
+                path=self.generate(aid,folder,policy,include_class_index=include_class_index)
                 results.append((aid,'成功' if path else '跳過',str(path or '')))
             except Exception as e:
                 results.append((aid,'失敗',str(e)))
