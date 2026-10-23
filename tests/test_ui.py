@@ -58,7 +58,7 @@ def test_ui_capacity_split_manual_selection(qtbot,manager,monkeypatch):
 
 
 def test_import_preview_confirm_and_class_search(qtbot,manager,tmp_path,monkeypatch):
-    wb=Workbook();s=wb.active;s.title='D';s.append(['學號','姓名','英文姓名','班級','科目代碼'])
+    wb=Workbook();s=wb.active;s.title='D';s.append(['學號','姓名','英文姓名','授課班','科目代碼'])
     s.append(['00001','甲','A','D','C101']);p=tmp_path/'roster.xlsx';wb.save(p)
     dialog=ImportDialog(manager,[p]);qtbot.addWidget(dialog)
     assert dialog.preview.rowCount()==1 and not manager.students()
@@ -78,7 +78,7 @@ def test_open_output_uses_local_file_url(qtbot,manager,tmp_path,monkeypatch):
 
 def test_combined_names_preview_and_save(qtbot,manager,tmp_path,monkeypatch):
     wb=Workbook();s=wb.active
-    s.append(['帳號','姓名','英文姓名','班級','科目代碼'])
+    s.append(['帳號','姓名','英文姓名','授課班','科目代碼'])
     s.append(['F20990100001','陳大文 CHAN TAI MAN','David','4B','BAE409'])
     path=tmp_path/'original.xlsx';wb.save(path)
     dialog=ImportDialog(manager,[path]);qtbot.addWidget(dialog)
@@ -87,6 +87,6 @@ def test_combined_names_preview_and_save(qtbot,manager,tmp_path,monkeypatch):
     monkeypatch.setattr(QMessageBox,'question',lambda *a,**k:QMessageBox.StandardButton.Yes)
     dialog.commit()
     win=MainWindow(manager);qtbot.addWidget(win)
-    assert 'v1.3.0' in win.windowTitle()
+    assert 'v1.3.1' in win.windowTitle()
     assert win.students_table.item(0,1).text()=='陳大文'
     assert win.students_table.item(0,2).text()=='CHAN TAI MAN'

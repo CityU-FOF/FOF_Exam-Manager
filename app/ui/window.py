@@ -103,7 +103,7 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.3.0');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.3.1');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
@@ -142,7 +142,7 @@ class MainWindow(QMainWindow):
         self.dashboard_table.cellDoubleClicked.connect(lambda *_:self.select_session(selected_row(self.dashboard_table)['id'],5))
 
     def build_students(self):
-        layout=self.page('學生名單','拖放 .xlsx 到視窗或選取檔案匯入。按科目代碼識別授課班；行政班僅供參考，再確認預覽與差異。')
+        layout=self.page('學生名單','拖放 .xlsx 到視窗或選取檔案匯入。每份檔案只讀完整匯總名單，按科目代碼識別授課班，再確認預覽與差異。')
         filters=QHBoxLayout();layout.addLayout(filters)
         self.student_search=QLineEdit();self.student_search.setPlaceholderText('搜尋學號、中文姓名、英文姓名');filters.addWidget(self.student_search)
         self.student_course=QComboBox();self.student_class=QComboBox();filters.addWidget(self.student_course);filters.addWidget(self.student_class)
@@ -161,7 +161,7 @@ class MainWindow(QMainWindow):
         button('停用修讀記錄',lambda:self.guard(self.remove_student),bar)
         button('刪除選中修讀記錄',lambda:self.guard(self.delete_students),bar)
         button('刪除所選班級名單',lambda:self.guard(lambda:self.delete_students(True)),bar)
-        self.students_table=table(['學號','中文姓名','英文姓名','科目','授課班','行政班（參考）','學年','學期','匯入來源']);layout.addWidget(self.students_table)
+        self.students_table=table(['學號','中文姓名','英文姓名','科目','授課班','學年','學期','匯入來源']);layout.addWidget(self.students_table)
         self.students_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
     def build_courses(self):
@@ -315,7 +315,7 @@ class MainWindow(QMainWindow):
         rows=[r for r in rows if all(not combo.currentData() or r[key]==combo.currentData() for combo,key in
               [(self.student_year,'academic_year'),(self.student_term,'semester'),(self.student_source,'source')])]
         fill_table(self.students_table,rows,
-                   ['student_no','chinese_name','english_name','course_code','class_name','administrative_class','academic_year','semester','source'])
+                   ['student_no','chinese_name','english_name','course_code','class_name','academic_year','semester','source'])
         self.class_counts.setText(f'目前篩選：{len(rows)} 筆修讀記錄 · {len({r["student_no"] for r in rows})} 位學生 · {len({r["class_id"] for r in rows})} 個授課班（可 Ctrl／Shift 多選刪除）')
 
     def clear_student_filters(self):

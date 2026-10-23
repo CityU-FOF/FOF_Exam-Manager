@@ -51,7 +51,7 @@ ALIASES = {
     'cn': {'姓名', '中文姓名', 'chinesename', 'name'},
     'en': {'英文姓名', 'englishname'},
     'pinyin': {'英文拼音', '拼音姓名', '姓名拼音', '拼音', 'pinyin', 'romanizedname'},
-    'class': {'班級', '班级', 'class'},
+    'teaching_class': {'授課班', '授课班', '授課班級', '授课班级', 'teachingclass'},
     'code': {'科目代碼', '科目代码', 'coursecode'},
     'course': {'科目名稱', '科目名称', 'coursename'},
 }
@@ -71,7 +71,14 @@ def inspect_roster(path):
         raise ValidationError('無法開啟 Excel，請確認檔案未損壞或加密。') from exc
     candidates = []
     try:
-        for sheet in wb:
+        summaries=[s for s in wb if norm(s.title) in {'匯總','汇总','summary','總表','总表'}]
+        if summaries:
+            sheets=[summaries[0]]
+        elif len(wb.worksheets)==1:
+            sheets=wb.worksheets
+        else:
+            raise ValidationError(f'{path.name}：找不到匯總工作表，請提供完整匯總名單；不會讀取或合併分班 Sheet。')
+        for sheet in sheets:
             columns, header = {}, None
             for row in sheet.iter_rows(max_row=min(sheet.max_row, 50)):
                 mapping = {}
@@ -101,8 +108,24 @@ def inspect_roster(path):
             teaching = parse_teaching_code(meta.get('科目代碼', ''), code)
             if teaching:
                 code = teaching.course_code
+            elif meta.get('科目代碼'):
+                raise ValidationError(f'{path.name}：完整科目代碼「{meta["科目代碼"]}」無法識別或與科目編號不符，請核對該檔案的科目資料。')
             course_name = title[:match.start()].rstrip(' -') if match else title
-            grouped = {}
+            filename_class=re.fullmatch(r'\d{1,2}[A-Za-z]+',path.stem.strip())
+            title_class=match[2].upper() if match else ''
+            explicit_classes=set()
+            if 'teaching_class' in columns:
+                explicit_classes={str(sheet.cell(i,columns['teaching_class']).value or '').strip()
+                                  for i in range(header+1,sheet.max_row+1)
+                                  if sheet.cell(i,columns['id']).value}
+                explicit_classes.discard('')
+                if len(explicit_classes)>1:
+                    raise ValidationError(f'{path.name}：明確授課班欄包含多個授課班，請分開提供各班的匯總名單。')
+            cls=(teaching.class_name if teaching else
+                 next(iter(explicit_classes),'') or
+                 (filename_class[0].upper() if filename_class else '') or
+                 (title_class if re.fullmatch(r'\d{1,2}[A-Z]+',title_class) else ''))
+            records = []
             for row in sheet.iter_rows(min_row=header+1):
                 idcell = row[columns['id']-1]
                 raw_id = str(idcell.value or '')
@@ -110,7 +133,7 @@ def inspect_roster(path):
                     continue
                 def val(key):
                     return str(row[columns[key]-1].value or '').strip() if key in columns else ''
-                if not any(val(k) for k in ['id', 'cn', 'en', 'class']):
+                if not any(val(k) for k in ['id', 'cn', 'en']):
                     continue
                 sid, issues = cell_text(idcell)
                 cn, en = val('cn'), val('en')
@@ -132,12 +155,9 @@ def inspect_roster(path):
                     issues.append('姓名缺失')
                 if not sid or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*', sid):
                     issues.append('空白或錯誤學號')
-                admin = val('class')
-                cls = teaching.class_name if teaching else (admin or (sheet.title if sheet.title not in ('匯總', '汇总', 'Summary') else ''))
-                record = StudentRecord(sid, cn, en, cls, val('code') or code,
+                record = StudentRecord(sid, cn, en, cls, code or val('code'),
                                        val('course') or course_name, meta.get('課程', ''),
                                        meta.get('授課老師', ''), path.name, raw, issues)
-                record.administrative_class = admin
                 if teaching:
                     record.teaching_code = teaching.value
                     record.academic_year = teaching.academic_year
@@ -146,53 +166,19 @@ def inspect_roster(path):
                     record.grade = teaching.grade
                     if teaching.programme_code in PROGRAMMES:
                         record.programme = PROGRAMMES[teaching.programme_code][0]
-                elif meta.get('科目代碼'):
-                    issues.append('完整科目代碼無法識別，請人工核對授課班及科目編號')
                 if not record.course_code:
                     issues.append('科目代碼缺失（可在預覽填寫）')
                 if not cls:
                     issues.append('班級缺失（可在預覽填寫）')
-                grouped.setdefault(cls, []).append(record)
-            for cls, records in grouped.items():
+                records.append(record)
+            if records:
                 counts = Counter(r.student_no for r in records)
                 for rec in records:
                     if counts[rec.student_no] > 1:
                         rec.issues.append('同 Sheet 重複學號，需要人工確認')
-                candidates.append(Candidate(sheet.title, cls, records))
-        # A coded workbook describes one teaching roster. Administrative sheets
-        # are partitions of that roster, never different teaching classes.
-        coded = {}
-        for c in candidates:
-            if c.records[0].teaching_code:
-                coded.setdefault(c.records[0].teaching_code, []).append(c)
-        if coded:
-            result = [c for c in candidates if not c.records[0].teaching_code]
-            for code, sheets in coded.items():
-                summary = [c for c in sheets if c.sheet.lower() in ('匯總', '汇总', 'summary', '總表', '总表')]
-                if summary:
-                    primary = summary[0]
-                    primary.recommended = True
-                    result.append(primary)
-                else:
-                    records = {}
-                    for c in sheets:
-                        for r in c.records:
-                            old = records.get(r.student_no)
-                            if old and (old.chinese_name, old.english_name) != (r.chinese_name, r.english_name):
-                                old.issues.append('不同 Sheet 的同學號姓名不一致，需要人工確認')
-                                old.raw_name += '\n其他 Sheet：' + r.raw_name
-                            elif not old:
-                                records[r.student_no] = r
-                    primary = sheets[0]
-                    result.append(Candidate(' + '.join(c.sheet for c in sheets), primary.class_name, list(records.values()), True))
-            return result
-        independent = {c.class_name for c in candidates if c.sheet == c.class_name}
-        hint = re.search(r'(?:\d|[-_])([A-Za-z])$', path.stem)
-        for c in candidates:
-            eligible = c.sheet == c.class_name or c.class_name not in independent
-            c.recommended = eligible and (not hint or c.class_name.upper() == hint[1].upper())
+                candidates.append(Candidate('匯總', cls, records, True))
         if not candidates:
-            raise ValidationError('找不到學號與姓名表頭，請使用「帳號／學號、姓名、英文姓名、班級」欄位。')
+            raise ValidationError('匯總名單找不到學號與姓名表頭，請使用「帳號／學號、姓名、英文姓名」欄位。')
         return candidates
     finally:
         wb.close()

@@ -39,11 +39,15 @@ def test_decode_course_offering():
 
 @pytest.mark.parametrize('summary',[True,False])
 def test_roster_counts_administrative_classes_together(tmp_path,summary):
+    if not summary:
+        with pytest.raises(ValidationError,match='找不到匯總'):
+            inspect_roster(workbook(tmp_path/'3D.xlsx',summary=False))
+        return
     candidates=inspect_roster(workbook(tmp_path/'3D.xlsx',summary=summary))
     assert len(candidates)==1 and candidates[0].recommended
     rows=candidates[0].records
     assert len(rows)==2 and {r.class_name for r in rows}=={'3D'}
-    assert {r.administrative_class for r in rows}=={'D','A'}
+    assert {r.administrative_class for r in rows}=={''}
     assert all(r.teaching_code=='261BAECF3DBAE30500' for r in rows)
 
 
@@ -51,7 +55,7 @@ def test_repeated_summary_not_duplicated_and_idempotent(manager,tmp_path):
     records=inspect_roster(workbook(tmp_path/'3D.xlsx'))[0].records
     manager.import_records(records);manager.import_records(records)
     assert len(manager.students())==2 and manager.classes()[0]['count']==2
-    assert {s['administrative_class'] for s in manager.students()}=={'A','D'}
+    assert {s['administrative_class'] for s in manager.students()}=={''}
     assert manager.courses()[0]['programme_en']==PROGRAMMES['BAECF'][1]
 
 
@@ -218,9 +222,10 @@ def test_batch_generated_name_and_fixed_programme(manager,qtbot):
 def test_coded_roster_preview_shows_actual_teaching_class(qtbot,manager,tmp_path):
     d=ImportDialog(manager,[workbook(tmp_path/'3D.xlsx')]);qtbot.addWidget(d)
     assert d.preview.rowCount()==2
-    assert d.preview.item(1,3).text()=='3D' and d.preview.item(1,6).text()=='A'
-    assert d.preview.item(0,8).text()=='261BAECF3DBAE30500'
-    assert '行政班僅供參考' in d.summary.text()
+    assert d.preview.item(1,3).text()=='3D'
+    assert d.preview.item(0,7).text()=='261BAECF3DBAE30500'
+    assert '完整匯總名單' in d.summary.text()
+    assert not any('行政班' in d.preview.horizontalHeaderItem(i).text() for i in range(d.preview.columnCount()))
 
 
 def test_session_excludes_other_academic_terms(manager,tmp_path,qtbot):

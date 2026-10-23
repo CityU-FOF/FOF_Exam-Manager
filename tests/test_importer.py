@@ -33,7 +33,7 @@ def test_vba_pinyin_header_wins_over_nickname(tmp_path,pinyin_first):
     wb=Workbook();s=wb.active
     names=['英文拼音','英文姓名'] if pinyin_first else ['英文姓名','英文拼音']
     values=['CHAN TAI MAN','David'] if pinyin_first else ['David','CHAN TAI MAN']
-    s.append(['帳號','中文姓名',*names,'班級','科目代碼'])
+    s.append(['帳號','中文姓名',*names,'授課班','科目代碼'])
     s.append(['F20990100001','陳大文',*values,'4B','BAE409'])
     path=tmp_path/'vba-output.xlsx';wb.save(path)
     record=inspect_roster(path)[0].records[0]
@@ -44,7 +44,7 @@ def test_vba_pinyin_header_wins_over_nickname(tmp_path,pinyin_first):
 
 def test_official_combined_name_overrides_nickname_and_allows_english_only(manager,tmp_path):
     wb=Workbook();s=wb.active
-    s.append(['學號','姓名','英文姓名','班級','科目代碼'])
+    s.append(['學號','姓名','英文姓名','授課班','科目代碼'])
     s.append(['001','陳大文CHAN TAI MAN','David','4B','BAE409'])
     s.append(['002','ANA MARIA SILVA','Ana','4B','BAE409'])
     s.append(['003','','José de Sousa','4B','BAE409'])
@@ -120,7 +120,7 @@ def test_original_fourth_year_attachments(manager,tmp_path):
 
 def test_numeric_id_formats_and_duplicates(tmp_path):
     wb=Workbook();s=wb.active;s.title='D'
-    s.append(['帳號','姓名','英文姓名','班級','科目代碼'])
+    s.append(['帳號','姓名','英文姓名','授課班','科目代碼'])
     s.append([123,'陳大文 CHAN TAI MAN','','D','C101']);s['A2'].number_format='000000'
     s.append(['000123','陳大文','CHAN TAI MAN','D','C101'])
     s.append(['=1+1','未確認','UNKNOWN','D','C101'])
@@ -135,8 +135,11 @@ def test_numeric_id_formats_and_duplicates(tmp_path):
 def test_summary_fallback(tmp_path):
     wb=Workbook();s=wb.active;s.title='匯總'
     s.append(['學號','姓名','英文姓名','班級','科目代碼']);s.append(['001','甲','A','D','C101']);s.append(['002','乙','B','E','C101'])
-    p=tmp_path/'all.xlsx';wb.save(p)
-    cs=inspect_roster(p);assert len(cs)==2 and all(c.recommended for c in cs)
+    p=tmp_path/'1D.xlsx';wb.save(p)
+    cs=inspect_roster(p)
+    assert len(cs)==1 and cs[0].recommended and cs[0].sheet=='匯總'
+    assert len(cs[0].records)==2 and {r.class_name for r in cs[0].records}=={'1D'}
+    assert not any(r.administrative_class for r in cs[0].records)
 
 
 def test_file_validation(tmp_path):

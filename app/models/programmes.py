@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import re
+import unicodedata
 
 FACULTY = '金融學院'
 PROGRAMMES = {
@@ -22,9 +23,11 @@ class TeachingCode:
 
 
 def parse_teaching_code(value, course_hint=''):
-    value = str(value or '').strip().upper()
-    subject = re.escape(course_hint.upper()) if course_hint else r'[A-Z]{3}\d{3}'
-    match = re.fullmatch(r'(\d{2})([123])([A-Z]+)(\d{1,2})([A-Z]+?)(' + subject + r')(\d{2})', value)
+    value = re.sub(r'[\s\u200b\ufeff]+', '', unicodedata.normalize('NFKC', str(value or ''))).upper()
+    course_hint = str(course_hint or '').strip().upper()
+    subject = re.escape(course_hint) if course_hint else r'[A-Z]{3}\d{3}'
+    # New offerings can append a two-letter suffix, e.g. ...BAE10300CB.
+    match = re.fullmatch(r'(\d{2})([123])([A-Z]+)(\d{1,2})([A-Z]+?)(' + subject + r')(\d{2}(?:[A-Z]{2})?)', value)
     if not match:
         return None
     year, semester, programme, grade, group, subject, _ = match.groups()
