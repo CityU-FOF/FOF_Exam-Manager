@@ -116,7 +116,7 @@ class SeatTree(QTreeWidget):
     orderChanged=Signal(list)
     def __init__(self,parent=None):
         super().__init__(parent)
-        self.setHeaderLabels(['序號','座號','學號','中文姓名','英文姓名','班級','特殊安排'])
+        self.setHeaderLabels(['序號','座號','學號','中文姓名','英文姓名','班級','特殊安排','特殊學生原因（內部）'])
         self.setRootIsDecorated(False)
         self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)

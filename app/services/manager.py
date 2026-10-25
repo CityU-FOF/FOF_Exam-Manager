@@ -138,7 +138,8 @@ class Manager:
                     self.db.conn.execute('DELETE FROM session_classes WHERE class_id=?',(cid,))
                     self.db.conn.execute('DELETE FROM classes WHERE id=?',(cid,))
             for record in records:
-                if not self.db.one('SELECT id FROM enrollments WHERE student_id=?',(record['student_id'],)):
+                if (not self.db.one('SELECT id FROM enrollments WHERE student_id=?',(record['student_id'],))
+                        and not self.db.one('SELECT student_id FROM student_flags WHERE student_id=?',(record['student_id'],))):
                     self.db.conn.execute('DELETE FROM students WHERE id=?',(record['student_id'],))
             for sid in sessions:
                 self.db.conn.execute('DELETE FROM history WHERE session_id=?',(sid,))
@@ -199,8 +200,9 @@ class Manager:
     def students(self, search='', course_id=None, class_id=None):
         sql = '''SELECT s.*,e.id enrollment_id,e.source,e.active,e.position,e.administrative_class,c.name class_name,c.id class_id,
         c.teaching_code,c.academic_year,c.semester,
-        co.id course_id,co.code course_code,co.name_cn course_name FROM students s
+        co.id course_id,co.code course_code,co.name_cn course_name,COALESCE(f.reason,'') flag_reason FROM students s
         JOIN enrollments e ON e.student_id=s.id JOIN classes c ON c.id=e.class_id JOIN courses co ON co.id=c.course_id
+        LEFT JOIN student_flags f ON f.student_id=s.id
         WHERE e.active=1'''
         args=[]
         if search:
@@ -211,6 +213,32 @@ class Manager:
         if class_id:
             sql += ' AND c.id=?'; args.append(class_id)
         return self.db.rows(sql+' ORDER BY co.code,c.name,e.position',args)
+
+    def set_student_flag(self,student_id,reason='',enabled=True):
+        if not self.db.one('SELECT id FROM students WHERE id=?',(student_id,)):
+            raise ValidationError('學生不存在，請重新選取。')
+        reason=str(reason).strip()
+        if enabled and not reason:raise ValidationError('請填寫特殊學生標記的原因。')
+        with self.db.conn:
+            if enabled:
+                self.db.conn.execute('''INSERT INTO student_flags(student_id,reason,updated) VALUES(?,?,?)
+                    ON CONFLICT(student_id) DO UPDATE SET reason=excluded.reason,updated=excluded.updated''',(student_id,reason,now()))
+            else:self.db.conn.execute('DELETE FROM student_flags WHERE student_id=?',(student_id,))
+
+    def flagged_students(self):
+        return self.db.rows('''SELECT s.*,f.reason flag_reason,f.updated FROM student_flags f
+            JOIN students s ON s.id=f.student_id ORDER BY s.student_no''')
+
+    def flagged_in_allocations(self,identifiers):
+        identifiers=list(dict.fromkeys(identifiers))
+        if not identifiers:return []
+        return self.db.rows('''SELECT a.id assignment_id,a.student_id,a.seat,al.id allocation_id,al.session_id,
+            r.name room_name,co.code,co.name_cn,s.student_no,s.chinese_name,s.english_name,f.reason flag_reason
+            FROM assignments a JOIN student_flags f ON f.student_id=a.student_id
+            JOIN students s ON s.id=a.student_id JOIN allocations al ON al.id=a.allocation_id
+            JOIN rooms r ON r.id=al.room_id JOIN sessions se ON se.id=al.session_id
+            JOIN exams e ON e.id=se.exam_id JOIN courses co ON co.id=e.course_id
+            WHERE al.id IN ('''+','.join('?' for _ in identifiers)+') ORDER BY co.code,r.name,a.position',identifiers)
 
     @staticmethod
     def check_student(record):
@@ -459,7 +487,8 @@ class Manager:
 
     def assigned(self,sid=None,aid=None):
         sql='''SELECT a.*,s.student_no,s.chinese_name,s.english_name,e.active,c.name class_name,c.id class_id,
-          al.session_id,al.room_id,r.name room_name FROM assignments a JOIN students s ON s.id=a.student_id
+          al.session_id,al.room_id,r.name room_name,COALESCE(f.reason,'') flag_reason FROM assignments a JOIN students s ON s.id=a.student_id
+          LEFT JOIN student_flags f ON f.student_id=s.id
           JOIN enrollments e ON e.id=a.enrollment_id JOIN classes c ON c.id=e.class_id
           JOIN allocations al ON al.id=a.allocation_id JOIN rooms r ON r.id=al.room_id'''
         if aid: sql+=' WHERE a.allocation_id=?'; args=(aid,)
@@ -468,9 +497,10 @@ class Manager:
         return self.db.rows(sql+' ORDER BY r.name,a.position',args)
 
     def participants(self,sid):
-        return self.db.rows('''SELECT s.*,s.id student_id,e.id enrollment_id,c.name class_name,c.id class_id,e.position
+        return self.db.rows('''SELECT s.*,s.id student_id,e.id enrollment_id,c.name class_name,c.id class_id,e.position,COALESCE(f.reason,'') flag_reason
           FROM session_classes sc JOIN enrollments e ON e.class_id=sc.class_id AND e.active=1
           JOIN students s ON s.id=e.student_id JOIN classes c ON c.id=sc.class_id
+          LEFT JOIN student_flags f ON f.student_id=s.id
           WHERE sc.session_id=? ORDER BY c.name,e.position''',(sid,))
 
     def pending(self,sid,class_id=None):

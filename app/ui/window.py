@@ -10,6 +10,7 @@ from app.ui.widgets import FormDialog,ClassCards,RoomCards,AssignedClassCards,Se
 from app.ui.import_dialog import ImportDialog
 from app.ui.course_paste import CoursePasteDialog
 from app.ui.room_paste import RoomPasteDialog
+from app.ui.student_flags import StudentFlagsDialog,StudentFlagReminder
 from app.ui.batch_dialog import BatchDialog
 from app.models.programmes import programme_values,PROGRAMMES,FACULTY
 from app.models.records import StudentRecord,CapacityError,ValidationError
@@ -103,7 +104,7 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.3.1');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.4.0');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
@@ -152,16 +153,19 @@ class MainWindow(QMainWindow):
         self.student_year=QComboBox();self.student_term=QComboBox();self.student_source=QComboBox()
         for f in [self.student_year,self.student_term,self.student_source]:
             more.addWidget(f);f.currentIndexChanged.connect(self.refresh_students)
+        self.flagged_only=QCheckBox('只顯示特殊學生');self.flagged_only.toggled.connect(self.refresh_students);more.addWidget(self.flagged_only)
         button('清除篩選',self.clear_student_filters,more)
         self.class_counts=QLabel();layout.addWidget(self.class_counts)
         bar=QHBoxLayout();layout.addLayout(bar)
         button('匯入 Excel（可多選）',self.pick_import,bar)
         button('新增學生',lambda:self.guard(self.add_student),bar)
         button('編輯姓名／學號',lambda:self.guard(self.edit_student),bar)
+        button('特殊學生標記',lambda:self.guard(lambda:self.student_flag_form(selected_row(self.students_table))),bar)
+        button('特殊學生名單',lambda:self.guard(lambda:StudentFlagsDialog(self.manager,self.student_flag_form,self).exec()),bar)
         button('停用修讀記錄',lambda:self.guard(self.remove_student),bar)
         button('刪除選中修讀記錄',lambda:self.guard(self.delete_students),bar)
         button('刪除所選班級名單',lambda:self.guard(lambda:self.delete_students(True)),bar)
-        self.students_table=table(['學號','中文姓名','英文姓名','科目','授課班','學年','學期','匯入來源']);layout.addWidget(self.students_table)
+        self.students_table=table(['學號','中文姓名','英文姓名','科目','授課班','學年','學期','匯入來源','特殊學生原因（內部）']);layout.addWidget(self.students_table)
         self.students_table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
 
     def build_courses(self):
@@ -236,6 +240,7 @@ class MainWindow(QMainWindow):
         button('復原',lambda:self.guard(lambda:self.history(False)),bar2)
         button('重做',lambda:self.guard(lambda:self.history(True)),bar2)
         button('隨機打散座位',lambda:self.guard(self.shuffle_seats),bar2)
+        button('特殊學生標記',lambda:self.guard(self.seat_student_flag),bar2)
         button('保存草稿',lambda:QMessageBox.information(self,'已保存','每次操作均已在資料庫交易中自動保存。'),bar2)
         button('返回考場編排',lambda:self.nav.setCurrentRow(5),bar2)
         self.seat_available=QLabel();self.seat_available.setWordWrap(True);layout.addWidget(self.seat_available)
@@ -314,12 +319,14 @@ class MainWindow(QMainWindow):
         rows=self.manager.students(self.student_search.text(),self.student_course.currentData(),self.student_class.currentData())
         rows=[r for r in rows if all(not combo.currentData() or r[key]==combo.currentData() for combo,key in
               [(self.student_year,'academic_year'),(self.student_term,'semester'),(self.student_source,'source')])]
+        if self.flagged_only.isChecked():rows=[r for r in rows if r['flag_reason']]
         fill_table(self.students_table,rows,
-                   ['student_no','chinese_name','english_name','course_code','class_name','academic_year','semester','source'])
+                   ['student_no','chinese_name','english_name','course_code','class_name','academic_year','semester','source','flag_reason'])
         self.class_counts.setText(f'目前篩選：{len(rows)} 筆修讀記錄 · {len({r["student_no"] for r in rows})} 位學生 · {len({r["class_id"] for r in rows})} 個授課班（可 Ctrl／Shift 多選刪除）')
 
     def clear_student_filters(self):
         self.student_search.clear()
+        self.flagged_only.setChecked(False)
         for combo in [self.student_course,self.student_class,self.student_year,self.student_term,self.student_source]:combo.setCurrentIndex(0)
 
     def refresh_courses(self):
@@ -359,7 +366,8 @@ class MainWindow(QMainWindow):
             class_ids=list(dict.fromkeys(r['class_id'] for r in assigned if r['allocation_id']==al['id']))
             item=QListWidgetItem();item.setData(Qt.ItemDataRole.UserRole,al['id']);item.setSizeHint(QSize(350,130+min(len(class_ids),4)*30));self.room_cards.addItem(item)
             card=QFrame();card.setObjectName('roomCard');v=QVBoxLayout(card)
-            v.addWidget(QLabel(f'{al["room_name"]}     {al["count"]} / {al["capacity"]} 人'))
+            flagged=sum(bool(r['flag_reason']) for r in assigned if r['allocation_id']==al['id'])
+            v.addWidget(QLabel(f'{al["room_name"]}     {al["count"]} / {al["capacity"]} 人'+(f'  ⚑ 特殊學生 {flagged} 人' if flagged else '')))
             bar=QProgressBar();bar.setRange(0,al['capacity']);bar.setValue(al['count']);v.addWidget(bar)
             v.addWidget(QLabel(f'剩餘可用 {remain} 座位 · 拖入班級或雙擊編輯座位'))
             if class_ids:
@@ -375,7 +383,7 @@ class MainWindow(QMainWindow):
         self.allocation_stats.setText(f'已分配：{len(assigned)} 人\n未分配：{len(pending)} 人\n'
                                      +'\n'.join(f'{a["room_name"]} 使用率：{a["count"]/a["capacity"]:.0%}' for a in allocations))
         errors=self.manager.validate(sid,False);self.warnings.setText('\n'.join(errors) or '資料檢查：目前沒有衝突')
-        for s in pending:self.pending_list.addItem(f'{s["class_name"]} · {s["student_no"]} · {s["chinese_name"]}')
+        for s in pending:self.pending_list.addItem(('⚑ ' if s['flag_reason'] else '')+f'{s["class_name"]} · {s["student_no"]} · {s["chinese_name"]}')
         populate(self.seat_room,[(f'{a["room_name"]} · {a["count"]} 人',a['id']) for a in allocations])
         self.refresh_seats();self.refresh_generation()
 
@@ -383,18 +391,18 @@ class MainWindow(QMainWindow):
         self.seat_tree.clear();aid=self.seat_room.currentData()
         if not aid:self.seat_available.setText('請先選擇考場。');return
         for i,r in enumerate(self.manager.assigned(aid=aid)):
-            item=QTreeWidgetItem([str(i+1),r['seat']+(' 🔒' if r['locked'] else ''),r['student_no'],r['chinese_name'],r['english_name'],r['class_name'],r['special']])
+            item=QTreeWidgetItem([str(i+1),r['seat']+(' 🔒' if r['locked'] else ''),r['student_no'],r['chinese_name'],r['english_name'],r['class_name'],r['special'],r['flag_reason']])
             item.setData(0,Qt.ItemDataRole.UserRole,r['id']);item.setFlags((item.flags()|Qt.ItemFlag.ItemIsDragEnabled)&~Qt.ItemFlag.ItemIsDropEnabled)
             self.seat_tree.addTopLevelItem(item)
         remaining,seats=self.manager.remaining(aid)
         self.seat_available.setText(f'剩餘 {remaining} 個座位；可用座號：'+', '.join(seats))
-        for i in range(7):self.seat_tree.resizeColumnToContents(i)
+        for i in range(8):self.seat_tree.resizeColumnToContents(i)
         self.filter_seats()
 
     def filter_seats(self):
         search=self.seat_search.text().lower()
         for i in range(self.seat_tree.topLevelItemCount()):
-            item=self.seat_tree.topLevelItem(i);item.setHidden(search not in ' '.join(item.text(c) for c in range(7)).lower())
+            item=self.seat_tree.topLevelItem(i);item.setHidden(search not in ' '.join(item.text(c) for c in range(8)).lower())
 
     def refresh_generation(self):
         checked=set()
@@ -402,8 +410,11 @@ class MainWindow(QMainWindow):
             item=self.generation_table.item(i,0)
             if item and item.checkState()==Qt.CheckState.Checked:checked.add(item.data(Qt.ItemDataRole.UserRole)['id'])
         sessions={s['id']:s for s in self.manager.sessions()};rows=[]
+        allocations=self.manager.allocations();flag_counts={}
+        for flagged in self.manager.flagged_in_allocations([a['id'] for a in allocations]):
+            key=flagged['allocation_id'];flag_counts[key]=flag_counts.get(key,0)+1
         course,dt,room=[f.text().lower() for f in self.gen_filters]
-        for al in self.manager.allocations():
+        for al in allocations:
             s=sessions[al['session_id']]
             if self.gen_batch.currentData() and s['batch_id']!=self.gen_batch.currentData():continue
             valid=not self.manager.validate(s['id'])
@@ -411,6 +422,7 @@ class MainWindow(QMainWindow):
             if self.only_complete.isChecked() and (not valid or s['status'] not in ('已完成編排','已生成文件')):continue
             generated=self.manager.db.one("SELECT * FROM generation_logs WHERE allocation_id=? AND status='成功' ORDER BY created DESC,rowid DESC LIMIT 1",(al['id'],))
             rows.append(dict(al,batch_id=s['batch_id'],batch_name=s['batch_name'],course=s['code']+' '+s['name_cn'],date=s['date'],time=s['start']+'–'+s['end'],status=s['status'] if valid else '待處理錯誤',modified=s['modified'],generated=generated['created'] if generated else '',path=generated['path'] if generated else ''))
+            if flag_counts.get(al['id']):rows[-1]['status']+=f' · ⚑ {flag_counts[al["id"]]} 位特殊學生'
         rows.sort(key=lambda r:(r['batch_name'],r['batch_id'],r['course'],r['date'],r['time'],r['session_id'],r['room_name']))
         sort=self.gen_sort.currentData()
         if sort in ('modified','generated'):
@@ -683,6 +695,22 @@ class MainWindow(QMainWindow):
         if QMessageBox.question(self,'隨機打散座位',f'隨機打散 {name} 的 {unlocked} 位學生？\n已鎖定的 {len(rows)-unlocked} 位學生保留座號及名單位置，其他考場保持不變。\n可按「復原」還原；完成後請重新生成 Excel。')!=QMessageBox.StandardButton.Yes:return
         self.manager.shuffle_seats(aid);self.refresh_all()
 
+    def student_flag_form(self,student):
+        identifier=student.get('student_id',student['id'])
+        current=self.manager.db.one('SELECT reason FROM student_flags WHERE student_id=?',(identifier,))
+        dialog=FormDialog('特殊學生標記（跨科目保存，不輸出）',[
+            ('enabled','啟用特殊學生標記','bool'),('reason','原因（例如作弊，僅內部提醒）','text')],
+            dict(enabled=True,reason=current['reason'] if current else ''),self)
+        identity=QLabel(student['student_no']+' · '+student['chinese_name']+' · '+student['english_name'])
+        identity.setTextFormat(Qt.TextFormat.PlainText);dialog.layout().insertRow(0,'學生',identity)
+        if dialog.exec()!=QDialog.DialogCode.Accepted:return
+        values=dialog.values();self.manager.set_student_flag(identifier,values['reason'],bool(values['enabled']));self.refresh_all()
+
+    def seat_student_flag(self):
+        identifiers=self.selected_assignments()
+        if len(identifiers)!=1:raise ValidationError('請選取一位學生。')
+        self.student_flag_form(next(r for r in self.manager.assigned() if r['id']==identifiers[0]))
+
     def history(self,redo):self.manager.undo(self.current_session(),redo);self.refresh_all()
 
     def complete_session(self):self.manager.complete(self.current_session());self.refresh_all();QMessageBox.information(self,'編排完成','沒有未分配學生或資料衝突，可前往文件生成中心。')
@@ -698,7 +726,21 @@ class MainWindow(QMainWindow):
             try:self.manager.export_data(aid)
             except ValidationError as e:errors.append(str(e))
         if errors:raise ValidationError('生成前檢查未通過：\n'+'\n'.join(dict.fromkeys(errors)))
-        if QMessageBox.question(self,'生成確認',f'即將生成 {len(aids)} 份 Excel，是否繼續？')!=QMessageBox.StandardButton.Yes:return
+        alerts=self.manager.flagged_in_allocations(aids)
+        if alerts:
+            reminder=StudentFlagReminder(alerts,len(aids),self)
+            if reminder.exec()!=QDialog.DialogCode.Accepted:
+                if reminder.allocation_id:
+                    al=next(a for a in self.manager.allocations() if a['id']==reminder.allocation_id)
+                    self.select_session(al['session_id'],6)
+                    self.seat_search.clear()
+                    self.seat_room.setCurrentIndex(self.seat_room.findData(al['id']))
+                    for i in range(self.seat_tree.topLevelItemCount()):
+                        item=self.seat_tree.topLevelItem(i)
+                        if item.data(0,Qt.ItemDataRole.UserRole)==reminder.assignment_id:
+                            self.seat_tree.setCurrentItem(item);self.seat_tree.scrollToItem(item);break
+                return
+        elif QMessageBox.question(self,'生成確認',f'即將生成 {len(aids)} 份 Excel，是否繼續？')!=QMessageBox.StandardButton.Yes:return
         folder=QFileDialog.getExistingDirectory(self,'選擇輸出資料夾')
         if not folder:return
         progress=QProgressDialog('正在生成文件…','取消剩餘項目',0,len(aids),self);progress.setWindowModality(Qt.WindowModality.ApplicationModal);progress.setMinimumDuration(0)
