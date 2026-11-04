@@ -79,12 +79,13 @@ class SessionDialog(FormDialog):
             self.editors['batch_id'].currentIndexChanged.connect(self.course_changed)
             self.course_changed()
             for r in manager.rooms():
-                if r['enabled']:self.add_check(self.rooms,f'{r["name"]} · {r["capacity"]} 人',r['id'])
+                if r['enabled']:self.add_check(self.rooms,f'{r["name"]} · {r["capacity"]} 人',r['id'],checked=False)
 
     @staticmethod
-    def add_check(widget,label,identifier):
+    def add_check(widget,label,identifier,checked=True):
         item=QListWidgetItem(label);item.setData(Qt.ItemDataRole.UserRole,identifier)
-        item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable);item.setCheckState(Qt.CheckState.Checked);widget.addItem(item)
+        item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable)
+        item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked);widget.addItem(item)
 
     def course_changed(self):
         cid=self.editors['course_id'].currentData();self.classes.clear()
@@ -104,7 +105,7 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.4.0');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.4.1');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
@@ -531,7 +532,6 @@ class MainWindow(QMainWindow):
         if not allocation:raise ValidationError('考場已變更，請重新選取。')
         rows=[r for r in self.manager.assigned(aid=aid) if r['class_id']==cid]
         if not rows:raise ValidationError('此班在該考場沒有學生。')
-        if QMessageBox.question(self,'移回待分配',f'將 {allocation["room_name"]} 的 {rows[0]["class_name"]} 班 {len(rows)} 人移回待分配？其他考場編排保持不變。')!=QMessageBox.StandardButton.Yes:return
         self.manager.unassign([r['id'] for r in rows]);self.refresh_all()
 
     def return_room_class(self):
@@ -681,8 +681,7 @@ class MainWindow(QMainWindow):
 
     def unassign_selected(self):
         ids=self.selected_assignments()
-        if QMessageBox.question(self,'移回待分配','將選取學生移出考場？修讀記錄不會刪除。')==QMessageBox.StandardButton.Yes:
-            self.manager.unassign(ids);self.refresh_all()
+        self.manager.unassign(ids);self.refresh_all()
 
     def shuffle_seats(self):
         aid=self.seat_room.currentData()

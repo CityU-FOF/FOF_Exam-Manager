@@ -123,12 +123,22 @@ def test_return_class_native_drop_only_affects_source_room(qtbot,manager,monkeyp
     untouched=manager.db.rows('SELECT * FROM assignments WHERE allocation_id=?',(rooms['G2209'],))
     win=MainWindow(manager);qtbot.addWidget(win);win.select_session(sid,5)
     assert win.room_cards.findChildren(AssignedClassCards)
-    monkeypatch.setattr(QMessageBox,'question',lambda *a,**k:QMessageBox.StandardButton.Yes)
+    def no_confirmation(*a,**k):raise AssertionError('Returning a class must not request confirmation')
+    monkeypatch.setattr(QMessageBox,'question',no_confirmation)
     mime=QMimeData();mime.setData(ClassCards.RETURN_MIME,json.dumps(dict(allocation_id=rooms['G2207'],class_id=cl['D'],session_id=sid)).encode())
     event=QDropEvent(QPointF(10,10),Qt.DropAction.MoveAction,mime,Qt.MouseButton.LeftButton,Qt.KeyboardModifier.NoModifier)
     win.class_cards.dropEvent(event)
     assert event.isAccepted() and len(manager.pending(sid,cl['D']))==2
     assert manager.db.rows('SELECT * FROM assignments WHERE allocation_id=?',(rooms['G2209'],))==untouched
+    win.history(False)
+    assert len(manager.pending(sid,cl['D']))==0
+    assert manager.db.rows('SELECT * FROM assignments WHERE allocation_id=?',(rooms['G2209'],))==untouched
+    win.seat_room.setCurrentIndex(win.seat_room.findData(rooms['G2207']))
+    win.seat_tree.topLevelItem(0).setSelected(True)
+    win.unassign_selected()
+    assert len(manager.pending(sid,cl['D']))==1
+    win.history(False)
+    assert len(manager.pending(sid,cl['D']))==0
 
 
 def test_return_class_button_and_locked_seat_protection(qtbot,manager,monkeypatch):

@@ -236,6 +236,10 @@ def test_session_excludes_other_academic_terms(manager,tmp_path,qtbot):
     room=manager.save_room({'name':'G2209','capacity':80,'enabled':1})
     d=SessionDialog(manager);qtbot.addWidget(d)
     assert d.classes.count()==1
+    assert d.checked(d.classes)==[d.classes.item(0).data(Qt.ItemDataRole.UserRole)]
+    assert d.rooms.count()==1 and d.checked(d.rooms)==[]
+    d.rooms.item(0).setCheckState(Qt.CheckState.Checked)
+    assert d.checked(d.rooms)==[room]
     wrong=next(c for c in manager.classes() if c['academic_year']=='2027–2028')
     with pytest.raises(ValidationError,match='學年學期'):
         manager.create_session(b,manager.courses()[0]['id'],{'date':'2026-10-15','start':'19:00','end':'21:00'},[wrong['id']],[room])
