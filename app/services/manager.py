@@ -423,13 +423,44 @@ class Manager:
         except (ValueError,KeyError):
             raise ValidationError('日期格式為 YYYY-MM-DD，時間為 HH:MM，結束時間須晚於開始時間。')
 
-    def update_session(self,sid,values):
+    def update_session(self,sid,values,room_changes=None,added_rooms=None):
         self.check_times(values)
+        current={a['id']:a for a in self.allocations(sid)}
+        if not self.db.one('SELECT id FROM sessions WHERE id=?',(sid,)):raise ValidationError('場次不存在。')
+        changes=room_changes or {};added=list(added_rooms or [])
+        if not set(changes)<=set(current):raise ValidationError('考場設定已變更，請重新開啟場次。')
+        targets=[changes.get(aid,a['room_id']) for aid,a in current.items() if changes.get(aid,a['room_id']) is not None]+added
+        if not targets:raise ValidationError('至少保留一個考場。')
+        if len(targets)!=len(set(targets)):raise ValidationError('同一場次不能重複使用同一考場。')
+        for rid in targets:
+            room=self.db.one('SELECT * FROM rooms WHERE id=?',(rid,))
+            if not room or not room['enabled']:raise ValidationError('所選考場已停用或不存在。')
+        removed=[aid for aid,rid in changes.items() if rid is None]
+        if removed:self.db.backup(self.db.path.with_name('before_session_rooms_'+uid()[:12]+'.sqlite3'))
         with self.db.conn:
             self.db.conn.execute('UPDATE sessions SET date=?,start=?,end=?,teachers=?,intake=?,allow_merge=?,status=?,modified=? WHERE id=?',
               (values['date'],values['start'],values['end'],values.get('teachers',''),values.get('intake',''),int(values.get('allow_merge',0)),'草稿',now(),sid))
+            for aid in removed:self.db.conn.execute('DELETE FROM allocations WHERE id=?',(aid,))
+            # Temporary room identities allow atomic swaps without violating
+            # UNIQUE(session_id,room_id). They never survive this transaction.
+            temporary=[]
+            for aid,rid in changes.items():
+                if rid is None or rid==current[aid]['room_id']:continue
+                temp=uid();temporary.append(temp)
+                self.db.conn.execute('INSERT INTO rooms(id,name,capacity,enabled) VALUES(?,?,1,0)',(temp,'_change_'+temp))
+                self.db.conn.execute('UPDATE allocations SET room_id=? WHERE id=?',(temp,aid))
+            for aid,rid in changes.items():
+                if rid is not None:self.db.conn.execute('UPDATE allocations SET room_id=? WHERE id=?',(rid,aid))
+            for temp in temporary:self.db.conn.execute('DELETE FROM rooms WHERE id=?',(temp,))
+            for rid in added:self.db.conn.execute('INSERT INTO allocations VALUES(?,?,?)',(uid(),sid,rid))
+            if removed:self.db.conn.execute('DELETE FROM history WHERE session_id=?',(sid,))
             for al in self.allocations(sid):
                 self.check_room_conflict(sid,al['room_id'])
+                rows=self.assigned(aid=al['id']);pool=set(self.seat_pool(al))
+                others=[r for other in self.overlap_sessions(sid) for r in self.assigned(other['id']) if r['room_id']==al['room_id']]
+                if len(rows)+len(others)>min(al['capacity'],len(pool)):raise ValidationError('更換後考場容量不足，未更改原有編排。')
+                if any(r['seat'] not in pool for r in rows):raise ValidationError('新考場不包含已編排座號，請先調整座號。')
+                if {r['seat'] for r in rows}&{r['seat'] for r in others}:raise ValidationError('新考場的合場座號已被使用。')
             for st in self.assigned(sid):
                 self.check_student_conflict(sid,st['student_id'])
 

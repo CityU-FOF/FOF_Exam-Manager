@@ -80,6 +80,31 @@ class SessionDialog(FormDialog):
             self.course_changed()
             for r in manager.rooms():
                 if r['enabled']:self.add_check(self.rooms,f'{r["name"]} · {r["capacity"]} 人',r['id'],checked=False)
+        else:
+            self.room_replacements={}
+            allocations=manager.allocations(existing['id'])
+            table_widget=QTableWidget(len(allocations),2)
+            table_widget.setHorizontalHeaderLabels(['目前考場／人數','更換為（或移除）'])
+            table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+            table_widget.setMinimumHeight(170)
+            for i,a in enumerate(allocations):
+                item=QTableWidgetItem(f'{a["room_name"]} · {a["count"]} 人');item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                table_widget.setItem(i,0,item)
+                choice=QComboBox();choice.addItem('移除：學生回待分配',None)
+                for room in manager.rooms():
+                    if room['enabled'] or room['id']==a['room_id']:
+                        choice.addItem(f'{room["name"]} · {room["capacity"]} 人',room['id'])
+                choice.setCurrentIndex(choice.findData(a['room_id']))
+                table_widget.setCellWidget(i,1,choice);self.room_replacements[a['id']]=choice
+            self.layout().insertRow(self.layout().rowCount()-1,'現有考場',table_widget)
+            for room in manager.rooms():
+                if room['enabled'] and room['id'] not in {a['room_id'] for a in allocations}:
+                    self.add_check(self.rooms,f'{room["name"]} · {room["capacity"]} 人',room['id'],checked=False)
+            self.rooms.setMaximumHeight(150)
+            self.layout().insertRow(self.layout().rowCount()-1,'新增考場（勾選）',self.rooms)
+            notice=QLabel('更換保留學生、次序及鎖定座號。移除會將學生回待分配（包括鎖定者），並清除此場次復原歷史；已有 Excel 保留。')
+            notice.setWordWrap(True);self.layout().insertRow(self.layout().rowCount()-1,notice)
+            self.resize(760,700)
 
     @staticmethod
     def add_check(widget,label,identifier,checked=True):
@@ -105,7 +130,7 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.4.1');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.5.0');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
@@ -198,7 +223,7 @@ class MainWindow(QMainWindow):
         self.session_search=QLineEdit();self.session_search.setPlaceholderText('搜尋學年／學期／科目／日期');bar2.addWidget(self.session_search)
         self.session_search.textChanged.connect(self.refresh_sessions_table)
         button('建立場次',lambda:self.guard(self.new_session),bar2)
-        button('修改日期／時間／教師',lambda:self.guard(self.edit_session),bar2)
+        button('修改場次／考場',lambda:self.guard(self.edit_session),bar2)
         button('複製設定',lambda:self.guard(self.copy_session),bar2)
         button('刪除場次',lambda:self.guard(self.delete_session),bar2)
         self.sessions_table=table(['批次','科目','日期','開始','結束','狀態']);layout.addWidget(self.sessions_table,2)
@@ -209,7 +234,7 @@ class MainWindow(QMainWindow):
         bar=QHBoxLayout();layout.addLayout(bar)
         button('復原',lambda:self.guard(lambda:self.history(False)),bar)
         button('重做',lambda:self.guard(lambda:self.history(True)),bar)
-        button('新增考場',lambda:self.guard(self.add_allocation_room),bar)
+        button('加／減／更換考場',lambda:self.guard(lambda:self.edit_session(self.current_session())),bar)
         button('調整參加班級',lambda:self.guard(self.edit_session_classes),bar)
         button('驗證並完成編排',lambda:self.guard(self.complete_session),bar)
         button('編輯選中考場座位',self.open_seat_editor,bar)
@@ -365,7 +390,7 @@ class MainWindow(QMainWindow):
         for al in allocations:
             remain,_=self.manager.remaining(al['id'])
             class_ids=list(dict.fromkeys(r['class_id'] for r in assigned if r['allocation_id']==al['id']))
-            item=QListWidgetItem();item.setData(Qt.ItemDataRole.UserRole,al['id']);item.setSizeHint(QSize(350,130+min(len(class_ids),4)*30));self.room_cards.addItem(item)
+            item=QListWidgetItem();item.setData(Qt.ItemDataRole.UserRole,al['id']);self.room_cards.addItem(item)
             card=QFrame();card.setObjectName('roomCard');v=QVBoxLayout(card)
             flagged=sum(bool(r['flag_reason']) for r in assigned if r['allocation_id']==al['id'])
             v.addWidget(QLabel(f'{al["room_name"]}     {al["count"]} / {al["capacity"]} 人'+(f'  ⚑ 特殊學生 {flagged} 人' if flagged else '')))
@@ -373,14 +398,16 @@ class MainWindow(QMainWindow):
             v.addWidget(QLabel(f'剩餘可用 {remain} 座位 · 拖入班級或雙擊編輯座位'))
             if class_ids:
                 class_list=AssignedClassCards(al['id'],sid)
-                class_list.setFixedHeight(min(len(class_ids),4)*30+8)
                 for cid in class_ids:
                     rr=[r for r in assigned if r['allocation_id']==al['id'] and r['class_id']==cid]
                     entry=QListWidgetItem(f'{rr[0]["class_name"]} 班 · {len(rr)} 人（拖回左側移出）')
                     entry.setData(Qt.ItemDataRole.UserRole,cid);class_list.addItem(entry)
+                class_list.ensurePolished()
+                class_list.setFixedHeight(sum(max(44,class_list.sizeHintForRow(i)) for i in range(class_list.count()))+24)
                 class_list.itemPressed.connect(lambda _,current=item:self.room_cards.setCurrentItem(current))
                 v.addWidget(class_list)
             self.room_cards.setItemWidget(item,card)
+            item.setSizeHint(QSize(350,card.sizeHint().height()+16))
         self.allocation_stats.setText(f'已分配：{len(assigned)} 人\n未分配：{len(pending)} 人\n'
                                      +'\n'.join(f'{a["room_name"]} 使用率：{a["count"]/a["capacity"]:.0%}' for a in allocations))
         errors=self.manager.validate(sid,False);self.warnings.setText('\n'.join(errors) or '資料檢查：目前沒有衝突')
@@ -568,9 +595,12 @@ class MainWindow(QMainWindow):
             v=d.values();sid=self.manager.create_session(v.pop('batch_id'),v.pop('course_id'),v,d.checked(d.classes),d.checked(d.rooms))
             self.refresh_all();self.select_session(sid,5)
 
-    def edit_session(self):
-        r=selected_row(self.sessions_table);d=SessionDialog(self.manager,self,r)
-        if d.exec()==QDialog.DialogCode.Accepted:self.manager.update_session(r['id'],d.values());self.refresh_all()
+    def edit_session(self,sid=None):
+        r=next(s for s in self.manager.sessions() if s['id']==sid) if sid else selected_row(self.sessions_table)
+        d=SessionDialog(self.manager,self,r)
+        if d.exec()==QDialog.DialogCode.Accepted:
+            self.manager.update_session(r['id'],d.values(),{aid:choice.currentData() for aid,choice in d.room_replacements.items()},d.checked(d.rooms))
+            self.refresh_all()
 
     def copy_session(self):
         r=selected_row(self.sessions_table)

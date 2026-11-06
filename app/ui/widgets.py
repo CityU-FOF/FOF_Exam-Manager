@@ -77,6 +77,16 @@ class AssignedClassCards(QListWidget):
     def __init__(self,allocation_id,session_id,parent=None):
         super().__init__(parent);self.allocation_id=allocation_id;self.session_id=session_id
         self.setDragEnabled(True)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
+    def wheelEvent(self,event):
+        parent=self.parentWidget()
+        while parent is not None:
+            if isinstance(parent,RoomCards):
+                parent.wheelEvent(event);return
+            parent=parent.parentWidget()
+        event.ignore()
 
     def startDrag(self,supportedActions):
         item=self.currentItem()
@@ -93,6 +103,8 @@ class RoomCards(QListWidget):
     def __init__(self,parent=None):
         super().__init__(parent);self.setAcceptDrops(True);self.setSpacing(12)
         self.setDropIndicatorShown(True)
+        self.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.verticalScrollBar().setSingleStep(24)
 
     def dragEnterEvent(self,event):
         if event.mimeData().hasFormat(ClassCards.MIME):event.acceptProposedAction()
