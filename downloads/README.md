@@ -1,6 +1,18 @@
 # 原始碼 ZIP
 
-## v1.6.1（目前版本）
+## v1.6.2（目前版本）
+
+- 檔案：[FOF_Exam_Manager_v1.6.2.zip](FOF_Exam_Manager_v1.6.2.zip)
+- 原始碼版本：`551d898f14353d7822a1544d47b6092dc6325700`
+- SHA-256：`75bda3ef6f1249fd18dbece50bb0993105f67bb158d20bc79d313e96079d1adc`
+
+修正Python 3.15令Pillow安裝失敗的問題。請先安裝標準64位元[Python 3.12.10](https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe)（可保留3.15），關閉舊程式，完整解壓新版至新資料夾，再執行「首次安裝.bat」及「啟動程式.bat」。
+
+安裝器只選標準64位元CPython 3.12–3.14，優先3.12；不相容的舊venv會保留後重建，原有學生資料與考場編排保留。只下載預編譯wheel，毋須安裝C++ Build Tools。若找不到相容Python，會在更動環境前停止。
+
+169項測試通過、2項私人附件測試略過；已驗證Windows x64 Pillow wheel可下載，並通過此ZIP解壓後的套件檢查及文件生成自檢。Windows批次遷移仍待實機確認。
+
+## v1.6.1（保留舊版）
 
 - 檔案：[FOF_Exam_Manager_v1.6.1.zip](FOF_Exam_Manager_v1.6.1.zip)
 - 原始碼版本：`e1ab70cb82972bb224fb5ca933acfddcc063d53e`
