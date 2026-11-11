@@ -1,5 +1,7 @@
 # 原始碼 ZIP
 
+PDF原頁面填寫研究：[下載測試樣本 ZIP](FOF_PDF_Form_Proof.zip) · [逐份PDF及預覽](pdf-form-proof/README.md)。這是獨立可行性樣本，尚未改變v1.6.2正式輸出流程，不需重新安裝程式。
+
 ## v1.6.2（目前版本）
 
 - 檔案：[FOF_Exam_Manager_v1.6.2.zip](FOF_Exam_Manager_v1.6.2.zip)

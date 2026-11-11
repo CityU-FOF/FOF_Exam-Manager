@@ -1,0 +1,46 @@
+{
+  "status": "prototype_only_not_integrated",
+  "renderer": "Poppler at 110 dpi; static cover also inspected using Qt PDFium",
+  "annex2_adobe_reader_validation": "pending",
+  "annex1-review-sample": {
+    "sha256": "1fc5f70a5a35796d4a27941d4a6b52f2feaef68c505682799cddd6152307c79c",
+    "bytes": 183451,
+    "original_page_box": [
+      0.0,
+      0.0,
+      595.32,
+      841.92
+    ],
+    "same_pixel_dimensions": true,
+    "changed_pixels_outside_fill_rectangles": 0
+  },
+  "annex3-bag-sample": {
+    "sha256": "9e64d3a15778292912becd30c2fc75fb36c211e94c11e8b21ff9f6a5f241f316",
+    "bytes": 307750,
+    "original_page_box": [
+      0.0,
+      0.0,
+      595.32,
+      841.92
+    ],
+    "same_pixel_dimensions": true,
+    "changed_pixels_outside_fill_rectangles": 0
+  },
+  "annex2-xfa-sample": {
+    "sha256": "2133ecc4d6f52ab3c4a92760af2d17413d09dfe4a5999fc8589efd2b473d68dc",
+    "bytes": 733825,
+    "widget_count": 20,
+    "original_file_prefix_unchanged": true,
+    "xfa_template_unchanged": true,
+    "xfa_config_unchanged": true,
+    "reader_extensions_signature_bytes_unchanged": true,
+    "signature_validity": "not_verified"
+  },
+  "annex2-print-copy": {
+    "sha256": "be3baba3aa7501e55f9b3ea9fa616af810e004655572cb7c94c8c7111dab92c1",
+    "bytes": 832334,
+    "xfa": false,
+    "interactive_form": false,
+    "original_reader_extension_signature_claimed": false
+  }
+}
