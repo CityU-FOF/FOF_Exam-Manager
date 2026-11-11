@@ -1,2 +1,3 @@
 02bf1afbcfa2bf26fb96bbfea632c819e777488d597dee51fb72bcacf1634331  FOF_Exam_Manager_v1.5.0.zip
 90771de4b8e3e19e170c11e7248a369a47278c229b7847841107e0891cf4cc00  FOF_Exam_Manager_v1.6.0.zip
+f78bdc801967045fe5f8aa2a0342cf8b616e66319f0d218f4c3a2cdf19fe4b57  FOF_Exam_Manager_v1.6.1.zip

@@ -1,6 +1,18 @@
 # 原始碼 ZIP
 
-## v1.6.0（目前版本）
+## v1.6.1（目前版本）
+
+- 檔案：[FOF_Exam_Manager_v1.6.1.zip](FOF_Exam_Manager_v1.6.1.zip)
+- 原始碼版本：`e1ab70cb82972bb224fb5ca933acfddcc063d53e`
+- SHA-256：`f78bdc801967045fe5f8aa2a0342cf8b616e66319f0d218f4c3a2cdf19fe4b57`
+
+修正舊環境缺少 Pillow 時生成官方表格失敗，以及生成前「打開輸出資料夾」沒有反應。啟動時核對套件並測試圖像嵌入；缺少或不完整時自動安裝修復，沿用原有本機資料。
+
+請先關閉舊程式，完整解壓新版至新資料夾，執行「首次安裝.bat」，看到 Setup completed 後執行「啟動程式.bat」。附件一、三由系統自動生成，不需要已審批PDF。預設輸出資料夾在本機資料目錄下的「輸出文件」，生成時亦可另選位置。
+
+155項測試通過、2項私人附件測試略過；此ZIP已完整解壓，通過套件／模板檢查及三份考務附件生成自檢。Windows自動修復與Microsoft Excel實際列印仍待實機確認。
+
+## v1.6.0（保留舊版）
 
 - 檔案：[FOF_Exam_Manager_v1.6.0.zip](FOF_Exam_Manager_v1.6.0.zip)
 - 原始碼版本：`648b76a5e6c4cc69830bb022271792da9b191743`
@@ -22,4 +34,4 @@
 
 若 GitHub archive 連結顯示 404，請先以有此儲存庫存取權的 GitHub 帳戶登入，開啟上述 ZIP 的檔案頁，使用 GitHub 的 Download raw／下載原始檔按鈕。這是直接儲存的 ZIP，並非 Actions artifact，不依賴 artifact 保存期限。
 
-發布端可透過 Git 存取儲存庫，但目前未登入的網頁 archive／codeload 請求回傳 404；重新上載檔案不會更改儲存庫的存取權。若登入後仍為 404，須確認帳戶對 `CityU-FOF/FOF_Exam-Manager` 的讀取權。
+儲存庫設為Public時可直接下載；設為Private時需要有讀取權的GitHub帳戶。重新上載ZIP不會更改儲存庫的存取權。
