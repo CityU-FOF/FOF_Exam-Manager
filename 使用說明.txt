@@ -2,7 +2,7 @@ FOF 考試座位及簽到表管理系統 — Windows 使用方法
 
 1. 在 GitHub 按 Code → Download ZIP，將 ZIP 完整解壓縮。
    不要直接在 ZIP 裡執行批次檔；scripts、app、resources 等資料夾都要保留。
-2. 安裝 64 位元 Python 3.12 或更新版本，安裝時勾選 Add Python to PATH。
+2. 安裝 標準 64 位元 Python 3.12（建議）、3.13 或 3.14，安裝時勾選 Add Python to PATH。
    Python 官方下載：https://www.python.org/downloads/windows/
 3. 首次使用：雙擊「首次安裝.bat」，等待顯示 Setup completed。
    這一步需要網絡，用來安裝 PySide6、openpyxl 和 Pillow。
@@ -44,3 +44,13 @@ v1.6.1 修正
    生成時仍可選其他位置；失敗後亦可打開已選位置。
 3. 附件一、三由本系統自動生成，不需要已審批封面。只有需要審批的附件二才要匯入已審批 PDF。
    不需審批的附件二填妥內容頁數、開／閉卷及科目資料後亦可自動生成。
+
+
+v1.6.2 安裝修正
+1. Pillow 12.0.0 不支援 Python 3.15；不要為此安裝 C++ Build Tools。
+2. 請先安裝 Python 3.12（64位元，標準版），可保留原本的 Python 3.15。
+   官方安裝包：https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe
+3. 關閉舊程式，解壓新版，執行「首次安裝.bat」。
+   會優先選3.12，亦接受標準3.13／3.14；舊版不相容venv會另行保留再重建。
+   學生資料和考場編排保留。未安裝相容Python時會先停止，不更動舊環境。
+4. 看見 Setup completed 後，再執行「啟動程式.bat」。

@@ -1,10 +1,10 @@
-# FOF Exam Seating & Attendance Manager v1.6.1
+# FOF Exam Seating & Attendance Manager v1.6.2
 
-澳門城市大學金融學院的離線考試座位及簽到表桌面工具。Python 3.12+、PySide6 Qt Widgets、SQLite、openpyxl；獨立專案，不修改或共用現有學生證明系統。運行時不需要網絡、帳號、CDN、API、遠端字型或雲端資料庫。
+澳門城市大學金融學院的離線考試座位及簽到表桌面工具。標準 64 位元 CPython 3.12–3.14、PySide6 Qt Widgets、SQLite、openpyxl；獨立專案，不修改或共用現有學生證明系統。運行時不需要網絡、帳號、CDN、API、遠端字型或雲端資料庫。
 
 ## 從 GitHub 下載
 
-v1.6.1 亦提供固定檔名的[完整原始碼 ZIP](downloads/FOF_Exam_Manager_v1.6.1.zip)，校驗值及下載方法見 [downloads/README.md](downloads/README.md)。若舊 archive 連結為 404，先登入有此儲存庫存取權的 GitHub 帳戶，開啟 ZIP 檔案頁後使用 Download raw／下載原始檔。上載 ZIP 不會更改儲存庫的存取權。
+v1.6.2 亦提供固定檔名的[完整原始碼 ZIP](downloads/FOF_Exam_Manager_v1.6.2.zip)，校驗值及下載方法見 [downloads/README.md](downloads/README.md)。若舊 archive 連結為 404，先登入有此儲存庫存取權的 GitHub 帳戶，開啟 ZIP 檔案頁後使用 Download raw／下載原始檔。上載 ZIP 不會更改儲存庫的存取權。
 
 在本 repository 頁面點 **Code → Download ZIP**，解壓後依以下步驟安裝 Python 原始碼版。
 
@@ -15,9 +15,11 @@ v1.6.1 亦提供固定檔名的[完整原始碼 ZIP](downloads/FOF_Exam_Manager_
 Windows 10/11 可直接用批次檔，無須自行輸入指令：
 
 1. 按 GitHub **Code → Download ZIP**，將整個 ZIP 解壓縮，不要在 ZIP 內直接執行。
-2. 安裝 **64 位元 Python 3.12 或更新版本**，安裝時勾選 **Add Python to PATH**。
+2. 安裝 **標準 64 位元 Python 3.12（建議）、3.13 或 3.14**，安裝時勾選 **Add Python to PATH**。
 3. 第一次雙擊根目錄的 **`首次安裝.bat`**。它會在 `%LOCALAPPDATA%\FOFExamManager\venv` 建立獨立 Python 環境、安裝 PySide6／openpyxl／Pillow，並實際檢查 Qt、圖像嵌入及官方模板；看到 **Setup completed** 後可關閉視窗。套件不放在 GitHub 解壓後的長路徑內，避免 Windows 路徑長度限制。
 4. 以後雙擊根目錄的 **`啟動程式.bat`** 即可開啟系統。每次啟動會核對目前版本所需套件及圖像支援，缺少或不相容時自動執行安裝修復，不再僅依賴舊版安裝完成標記；修復時需要網絡，正常使用可離線。
+
+若遇到 `Pillow 12.0.0 does not support Python 3.15` 或要求 C++ Build Tools，請安裝 [Python 3.12.10 Windows x64](https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe)，再執行新版「首次安裝.bat」。可保留 Python 3.15；安裝器會優先尋找 3.12，亦支援一般版 3.13／3.14，不支援預覽版或 free-threaded 版本。舊版不相容虛擬環境會保留為 `venv.previous-<唯一碼>`，再建立相容環境；建立失敗會復原舊環境，不移動資料庫。未找到相容 Python 時會停止，不修改原環境。Windows 套件只使用預先編譯的 wheel，不會要求使用者編譯 Pillow。
 
 首次安裝套件需要網絡，日常匯入、座位編排及 Excel 輸出均可離線。批次檔會檢查 Python 版本及 64 位元環境，出錯時保留訊息供排查。資料預設仍存在 `%LOCALAPPDATA%\FOFExamManager`，不會因重新解壓程式或重新安裝套件而刪除。根目錄另附可用記事本開啟的 `使用說明.txt`。
 
@@ -27,14 +29,14 @@ Windows 10/11 可直接用批次檔，無須自行輸入指令：
 
 ```powershell
 $fofVenv = Join-Path $env:LOCALAPPDATA 'FOFExamManager\venv'
-py -3.12 -m venv $fofVenv
-& "$fofVenv\Scripts\python.exe" -m pip install -r requirements.txt
+py -3.12 scripts/prepare_environment.py "$fofVenv"
+& "$fofVenv\Scripts\python.exe" -m pip install --only-binary=:all: -r requirements.txt
 & "$fofVenv\Scripts\python.exe" run.py
 ```
 
 `scripts/run_windows.cmd` 保留為啟動批次檔的內部入口。可在有網絡的相同 OS、架構與 Python 版本上預先執行 `pip download -r requirements.txt -d wheels`，將專案與 wheels 交給離線電腦，再用 `pip install --no-index --find-links wheels -r requirements.txt` 安裝。
 
-Linux/macOS 原始碼開發使用 `python3 -m venv .venv`、`.venv/bin/python -m pip install -r requirements.txt`、`.venv/bin/python run.py`。Windows 獨立程式建置見 [BUILD.md](BUILD.md)。發布時交付整個 `dist/FOFExamManager` 目錄，使用者不需要安裝 Python。
+Linux/macOS 原始碼開發使用 `python3 -m venv .venv`、`.venv/bin/python -m pip install --only-binary=:all: -r requirements.txt`、`.venv/bin/python run.py`。Windows 獨立程式建置見 [BUILD.md](BUILD.md)。發布時交付整個 `dist/FOFExamManager` 目錄，使用者不需要安裝 Python。
 
 開發環境驗證：Linux、Python 3.12.14、Qt 6.12；自動化結果見 [TESTING.md](TESTING.md)。Windows 原生打包與實機 Excel 列印尚待 Windows 主機驗證，不能將 Linux 打包成果當作 Windows `.exe`。
 
@@ -99,7 +101,7 @@ Linux/macOS 原始碼開發使用 `python3 -m venv .venv`、`.venv/bin/python -m
 
 混班時，可在文件生成中心勾選「簽到表末尾附班級座號索引（細字）」（預設不勾選）。末尾以 9 pt 灰色小字列出各授課班的實際座號，例如「3D：001–004、007、010–012」。只合併真正連續的座號，打散後零散座位仍準確列出，不會以最小至最大號誤包其他班學生。索引不加在個別學生旁，亦不加到座位表；仍保留不重複表頭及自然分頁。
 
-開啟已有資料庫時，會自動拆分能可靠辨識的舊「中文＋拼音」姓名，並將錯放在中文欄的英文全名移到英文欄。修改前先建立同目錄 `before_name_split_<唯一碼>.sqlite3` 備份；保留原文、修讀關係、座號、鎖定及復原歷史，相關場次轉為草稿等待重新生成。已分欄的姓名保留使用者填寫的英文名，不確定的格式維持原文，可重新匯入或人工核對。修正人數及備份路徑顯示於視窗底部；視窗標題顯示 v1.6.1，方便確認正在使用新版。
+開啟已有資料庫時，會自動拆分能可靠辨識的舊「中文＋拼音」姓名，並將錯放在中文欄的英文全名移到英文欄。修改前先建立同目錄 `before_name_split_<唯一碼>.sqlite3` 備份；保留原文、修讀關係、座號、鎖定及復原歷史，相關場次轉為草稿等待重新生成。已分欄的姓名保留使用者填寫的英文名，不確定的格式維持原文，可重新匯入或人工核對。修正人數及備份路徑顯示於視窗底部；視窗標題顯示 v1.6.2，方便確認正在使用新版。
 
 亦支援 VBA 拆分後的「中文姓名／英文拼音」表頭；同時有「英文拼音」及「英文姓名」時，優先拼音並保留原文。重新生成 Excel 並選擇覆蓋或另存，舊輸出不會自動更新。4B／4C／4D／4E 原始名單已驗證為 30／28／32／26 人，共 116 人；附件及含學生資料的測試輸出不放入 repository。
 

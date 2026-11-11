@@ -9,51 +9,70 @@ echo.
 call "%~dp0windows_environment.cmd"
 if not "%errorlevel%"=="0" goto failed
 echo Python environment: "%FOF_VENV_DIR%"
-if exist "%FOF_PYTHON%" goto validate_environment
+echo [1/3] Looking for standard 64-bit Python 3.12, 3.13 or 3.14...
+if not exist "%FOF_PYTHON%" goto find_python
+"%FOF_PYTHON%" "%~dp0prepare_environment.py" --probe >nul 2>&1
+if "%errorlevel%"=="0" goto install_packages
+echo The existing environment uses an unsupported Python. Looking for a compatible version.
 
-echo [1/3] Looking for 64-bit Python 3.12 or newer...
-py -3.12 -c "import sys, struct; sys.exit(0 if sys.version_info >= (3, 12) and struct.calcsize('P') == 8 else 1)" >nul 2>&1
+:find_python
+py -3.12 "%~dp0prepare_environment.py" --probe >nul 2>&1
 if "%errorlevel%"=="0" goto create_with_py312
-python -c "import sys, struct; sys.exit(0 if sys.version_info >= (3, 12) and struct.calcsize('P') == 8 else 1)" >nul 2>&1
+py -3.13 "%~dp0prepare_environment.py" --probe >nul 2>&1
+if "%errorlevel%"=="0" goto create_with_py313
+py -3.14 "%~dp0prepare_environment.py" --probe >nul 2>&1
+if "%errorlevel%"=="0" goto create_with_py314
+python "%~dp0prepare_environment.py" --probe >nul 2>&1
 if "%errorlevel%"=="0" goto create_with_python
-py -3 -c "import sys, struct; sys.exit(0 if sys.version_info >= (3, 12) and struct.calcsize('P') == 8 else 1)" >nul 2>&1
+py -3 "%~dp0prepare_environment.py" --probe >nul 2>&1
 if "%errorlevel%"=="0" goto create_with_py3
-echo Python was not found, is older than 3.12, or is not 64-bit.
-echo Please install 64-bit Python 3.12 or newer from https://www.python.org/downloads/windows/
-echo During installation, select Add Python to PATH, then run this file again.
+
+echo No compatible standard 64-bit Python was found.
+echo Python 3.15 and preview/free-threaded builds are not supported by these packages.
+echo Install Python 3.12 x64, then run this setup again. You can keep Python 3.15 installed.
+echo Download: https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe
+echo C++ Build Tools are not needed. Existing data and environments have not been changed.
 goto failed
 
 :create_with_py312
-py -3.12 -m venv "%FOF_VENV_DIR%"
+py -3.12 "%~dp0prepare_environment.py" "%FOF_VENV_DIR%"
 if not "%errorlevel%"=="0" goto failed
-goto validate_environment
+goto install_packages
+
+:create_with_py313
+py -3.13 "%~dp0prepare_environment.py" "%FOF_VENV_DIR%"
+if not "%errorlevel%"=="0" goto failed
+goto install_packages
+
+:create_with_py314
+py -3.14 "%~dp0prepare_environment.py" "%FOF_VENV_DIR%"
+if not "%errorlevel%"=="0" goto failed
+goto install_packages
 
 :create_with_python
-python -m venv "%FOF_VENV_DIR%"
+python "%~dp0prepare_environment.py" "%FOF_VENV_DIR%"
 if not "%errorlevel%"=="0" goto failed
-goto validate_environment
+goto install_packages
 
 :create_with_py3
-py -3 -m venv "%FOF_VENV_DIR%"
+py -3 "%~dp0prepare_environment.py" "%FOF_VENV_DIR%"
 if not "%errorlevel%"=="0" goto failed
 
-:validate_environment
-"%FOF_PYTHON%" -c "import sys, struct; sys.exit(0 if sys.version_info >= (3, 12) and struct.calcsize('P') == 8 else 1)"
-if not "%errorlevel%"=="0" goto unsupported_environment
+:install_packages
 echo [2/3] Installing the required packages...
 set "FOF_PIP_REPAIR="
 rem A failed installation may leave package metadata behind. Reinstall until
 rem a complete Qt/template verification has succeeded at least once.
 if not exist "%FOF_VENV_DIR%\.fof-setup-complete" set "FOF_PIP_REPAIR=--force-reinstall"
 if exist "%FOF_VENV_DIR%\.fof-setup-complete" del /q "%FOF_VENV_DIR%\.fof-setup-complete"
-"%FOF_PYTHON%" -m pip install --disable-pip-version-check %FOF_PIP_REPAIR% -r requirements.txt
+"%FOF_PYTHON%" -m pip install --only-binary=:all: --disable-pip-version-check %FOF_PIP_REPAIR% -r requirements.txt
 if not "%errorlevel%"=="0" goto failed
 echo [3/3] Checking Qt, Excel support, and the official template...
 "%FOF_PYTHON%" "%~dp0check_environment.py"
 if "%errorlevel%"=="0" goto verified_environment
 rem Metadata may exist even when a package is incomplete; repair it once.
 echo Repairing incomplete packages...
-"%FOF_PYTHON%" -m pip install --disable-pip-version-check --force-reinstall -r requirements.txt
+"%FOF_PYTHON%" -m pip install --only-binary=:all: --disable-pip-version-check --force-reinstall -r requirements.txt
 if not "%errorlevel%"=="0" goto failed
 "%FOF_PYTHON%" "%~dp0check_environment.py"
 if not "%errorlevel%"=="0" goto failed
@@ -66,10 +85,6 @@ echo Setup completed. Close this window and double-click the launch batch file.
 echo Existing student data and saved exam arrangements have been kept.
 if not defined FOF_NO_PAUSE pause
 exit /b 0
-
-:unsupported_environment
-echo The environment shown above does not use supported 64-bit Python 3.12 or newer.
-echo Install the correct Python, rename only that venv folder, then run setup again.
 
 :failed
 echo.

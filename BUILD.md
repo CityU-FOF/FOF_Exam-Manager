@@ -18,7 +18,7 @@
 
 ```powershell
 $fofVenv = Join-Path $env:LOCALAPPDATA 'FOFExamManager\venv'
-py -3.12 -m venv $fofVenv
+py -3.12 scripts/prepare_environment.py "$fofVenv"
 $fofPython = Join-Path $fofVenv 'Scripts\python.exe'
 & $fofPython -m pip install -r requirements-dev.txt
 $env:QT_QPA_PLATFORM = 'offscreen'

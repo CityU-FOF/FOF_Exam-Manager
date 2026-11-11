@@ -6,6 +6,9 @@ import sys
 
 def check():
     root=Path(__file__).resolve().parents[1]
+    sys.path.insert(0,str(root))
+    from scripts.prepare_environment import require_supported_python
+    require_supported_python()
     for line in (root/'requirements.txt').read_text(encoding='utf8').splitlines():
         line=line.strip()
         if not line or line.startswith('#'):continue
@@ -13,7 +16,6 @@ def check():
         try:installed=version(package)
         except PackageNotFoundError:installed=None
         if installed!=required:raise RuntimeError(f'{package} {required} is required; found {installed or "not installed"}.')
-    sys.path.insert(0,str(root))
     from PySide6 import QtWidgets
     from app.utils.paper_support import ensure_paper_support
     ensure_paper_support()
