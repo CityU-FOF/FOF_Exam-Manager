@@ -88,7 +88,7 @@ def test_v2_upgrade_backs_up_and_preserves_locked_seats_and_history(manager,tmp_
         upgraded=Manager(store)
         assert upgraded.snapshot(sid)==snapshot
         assert store.rows('SELECT * FROM history')==history
-        assert store.one('SELECT version FROM schema_version')['version']==3
+        assert store.one('SELECT version FROM schema_version')['version']==4
         upgraded.set_student_flag(student['student_id'],'持久標記')
     finally:store.close()
     reopened=Store(path)

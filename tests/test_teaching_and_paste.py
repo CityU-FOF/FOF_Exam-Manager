@@ -107,7 +107,7 @@ def test_restore_v1_backup_without_altering_backup(manager,tmp_path):
     backup=manager.db.restore(path)
     assert backup.exists() and path.read_bytes()==before
     assert manager.assigned('session')[0]['seat']=='007'
-    assert manager.db.one('SELECT version FROM schema_version')['version']==3
+    assert manager.db.one('SELECT version FROM schema_version')['version']==4
 
 
 def test_old_administrative_membership_moves_without_losing_id(tmp_path):

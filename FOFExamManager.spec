@@ -2,7 +2,8 @@
 from pathlib import Path
 root = Path(SPECPATH)
 a = Analysis([str(root / 'run.py')],pathex=[str(root)],binaries=[],
-             datas=[(str(root / 'resources' / 'official_template.xlsx'),'resources')],
+             datas=[(str(root / 'resources' / 'official_template.xlsx'),'resources'),
+                    (str(root / 'resources' / 'exam_forms'),'resources/exam_forms')],
              hiddenimports=[],hookspath=[],hooksconfig={},runtime_hooks=[],
              excludes=['PySide6.QtWebEngineCore','PySide6.QtWebEngineWidgets','PySide6.QtNetwork',
                        'PySide6.QtPdf','PySide6.QtQml','PySide6.QtQuick','tkinter','matplotlib','numpy','pandas','pytest'],

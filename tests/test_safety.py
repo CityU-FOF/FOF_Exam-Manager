@@ -122,7 +122,7 @@ def test_restore_wrong_columns_keeps_current_database(manager,tmp_path):
 def test_deployment_selfcheck(qapp,tmp_path):
     from app.utils.selfcheck import selfcheck
     report=selfcheck(qapp,tmp_path/'check')
-    assert report['status']=='passed' and report['ui_pages']==9
+    assert report['status']=='passed' and report['ui_pages']==10
     assert Path(report['output']).exists()
 
 

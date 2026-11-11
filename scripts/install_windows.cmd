@@ -45,10 +45,11 @@ set "FOF_PIP_REPAIR="
 rem A failed installation may leave package metadata behind. Reinstall until
 rem a complete Qt/template verification has succeeded at least once.
 if not exist "%FOF_VENV_DIR%\.fof-setup-complete" set "FOF_PIP_REPAIR=--force-reinstall"
+if exist "%FOF_VENV_DIR%\.fof-setup-complete" del /q "%FOF_VENV_DIR%\.fof-setup-complete"
 "%FOF_PYTHON%" -m pip install --disable-pip-version-check %FOF_PIP_REPAIR% -r requirements.txt
 if not "%errorlevel%"=="0" goto failed
 echo [3/3] Checking Qt, Excel support, and the official template...
-"%FOF_PYTHON%" -c "from PySide6 import QtWidgets; import openpyxl; from app.templates.engine import template_path; from openpyxl import load_workbook; w=load_workbook(template_path(),keep_links=False); assert w.sheetnames==['Attendance','Seat Plan']; w.close()"
+"%FOF_PYTHON%" -c "from PySide6 import QtWidgets; import openpyxl; from PIL import Image; from app.exporters.paper_forms import artwork; assert all(artwork(n).is_file() for n in ('review','cover','bag')); from app.templates.engine import template_path; from openpyxl import load_workbook; w=load_workbook(template_path(),keep_links=False); assert w.sheetnames==['Attendance','Seat Plan']; w.close()"
 if not "%errorlevel%"=="0" goto failed
 echo verified>"%FOF_VENV_DIR%\.fof-setup-complete"
 if not "%errorlevel%"=="0" goto failed

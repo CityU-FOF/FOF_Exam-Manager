@@ -24,11 +24,16 @@ def default_data_dir():
 
 SCHEMA = '''
 CREATE TABLE IF NOT EXISTS schema_version(version INTEGER NOT NULL);
-INSERT INTO schema_version SELECT 3 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
+INSERT INTO schema_version SELECT 4 WHERE NOT EXISTS(SELECT 1 FROM schema_version);
 CREATE TABLE IF NOT EXISTS students(id TEXT PRIMARY KEY,student_no TEXT NOT NULL UNIQUE,
  chinese_name TEXT NOT NULL,english_name TEXT NOT NULL,raw_name TEXT NOT NULL DEFAULT '');
 CREATE TABLE IF NOT EXISTS student_flags(student_id TEXT PRIMARY KEY REFERENCES students(id) ON DELETE CASCADE,
  reason TEXT NOT NULL CHECK(length(trim(reason))>0),updated TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS paper_settings(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+ settings_json TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS paper_covers(session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+ language TEXT NOT NULL CHECK(language IN ('cn','en')),original_name TEXT NOT NULL,
+ sha256 TEXT NOT NULL,pdf BLOB NOT NULL,PRIMARY KEY(session_id,language));
 CREATE TABLE IF NOT EXISTS courses(id TEXT PRIMARY KEY,code TEXT NOT NULL UNIQUE,name_cn TEXT NOT NULL,
  name_en TEXT NOT NULL DEFAULT '',teachers TEXT NOT NULL DEFAULT '',programme TEXT NOT NULL DEFAULT '',
  programme_en TEXT NOT NULL DEFAULT '',language TEXT NOT NULL DEFAULT '中文',notes TEXT NOT NULL DEFAULT '');
@@ -79,16 +84,17 @@ class Store:
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
         existing={r[0] for r in self.conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        if existing and ('schema_version' not in existing or self.conn.execute('SELECT version FROM schema_version').fetchone()[0] not in (1,2,3)):
+        if existing and ('schema_version' not in existing or self.conn.execute('SELECT version FROM schema_version').fetchone()[0] not in (1,2,3,4)):
             self.conn.close()
             raise ValidationError('此資料庫不是相容的 FOF 考試系統資料庫，未改動其內容。')
         self.conn.execute('PRAGMA foreign_keys=ON')
         self.conn.execute('PRAGMA journal_mode=WAL')
         self.conn.execute('PRAGMA busy_timeout=5000')
         self.upgrade_backup = None
-        if existing and self.conn.execute('SELECT version FROM schema_version').fetchone()[0] in (1,2):
-            self.upgrade_backup = self.path.with_name('before_upgrade_v3_' + uid()[:12] + '.sqlite3')
+        if existing and self.conn.execute('SELECT version FROM schema_version').fetchone()[0] in (1,2,3):
+            self.upgrade_backup = self.path.with_name('before_upgrade_v4_' + uid()[:12] + '.sqlite3')
             self.backup(self.upgrade_backup)
+        if existing and self.conn.execute('SELECT version FROM schema_version').fetchone()[0] in (1,2):
             if self.conn.execute('SELECT version FROM schema_version').fetchone()[0] == 1:
                 self._upgrade_v1()
             with self.conn:
@@ -96,9 +102,16 @@ class Store:
                 self.conn.execute('''CREATE TABLE student_flags(student_id TEXT PRIMARY KEY REFERENCES students(id) ON DELETE CASCADE,
                     reason TEXT NOT NULL CHECK(length(trim(reason))>0),updated TEXT NOT NULL)''')
                 self.conn.execute('UPDATE schema_version SET version=3')
+        if existing and self.conn.execute('SELECT version FROM schema_version').fetchone()[0]==3:
+            with self.conn:
+                self.conn.execute('BEGIN IMMEDIATE')
+                self.conn.execute('''CREATE TABLE IF NOT EXISTS paper_settings(session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,settings_json TEXT NOT NULL)''')
+                self.conn.execute('''CREATE TABLE IF NOT EXISTS paper_covers(session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                    language TEXT NOT NULL CHECK(language IN ('cn','en')),original_name TEXT NOT NULL,sha256 TEXT NOT NULL,pdf BLOB NOT NULL,PRIMARY KEY(session_id,language))''')
+                self.conn.execute('UPDATE schema_version SET version=4')
         self.conn.executescript(SCHEMA)
         self.conn.commit()
-        if self.conn.execute('SELECT version FROM schema_version').fetchone()[0] != 3:
+        if self.conn.execute('SELECT version FROM schema_version').fetchone()[0] != 4:
             self.conn.close()
             raise ValidationError('資料庫版本不相容；請使用相應版本程式或還原相容備份。')
 
@@ -159,9 +172,9 @@ class Store:
                         'import_logs','generation_logs'}
             tables = {r[0] for r in src.execute("SELECT name FROM sqlite_master WHERE type='table'")}
             version = src.execute('SELECT version FROM schema_version').fetchone()[0] if 'schema_version' in tables else None
-            if not required <= tables or version not in (1,2,3):
+            if not required <= tables or version not in (1,2,3,4):
                 raise ValidationError('這不是相容的 FOF 考試系統備份。')
-            if version in (1,2):
+            if version in (1,2,3):
                 with tempfile.TemporaryDirectory(prefix='fof-restore-') as folder:
                     staged = Path(folder) / 'upgrade.sqlite3'
                     with closing(sqlite3.connect(staged)) as target:
@@ -172,6 +185,7 @@ class Store:
                     finally:
                         upgraded.close()
             required.add('student_flags')
+            required.update({'paper_settings','paper_covers'})
             if not required <= tables:raise ValidationError('備份缺少特殊學生標記資料，現有資料沒有改動。')
             for table in required:
                 expected=[tuple(r)[1:6] for r in self.conn.execute(f'PRAGMA table_info({table})')]

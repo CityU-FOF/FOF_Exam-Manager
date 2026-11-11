@@ -11,6 +11,7 @@ from app.ui.import_dialog import ImportDialog
 from app.ui.course_paste import CoursePasteDialog
 from app.ui.room_paste import RoomPasteDialog
 from app.ui.student_flags import StudentFlagsDialog,StudentFlagReminder
+from app.ui.papers import PaperPage
 from app.ui.batch_dialog import BatchDialog
 from app.models.programmes import programme_values,PROGRAMMES,FACULTY
 from app.models.records import StudentRecord,CapacityError,ValidationError
@@ -130,11 +131,11 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.5.0');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.6.0');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
-        self.nav.addItems(['Dashboard','學生名單','科目管理','考場管理','學年與考試','考場編排','座位調整','文件生成中心','設定與資料備份'])
+        self.nav.addItems(['Dashboard','學生名單','科目管理','考場管理','學年與考試','考場編排','座位調整','文件生成中心','試卷文件及印刷','設定與資料備份'])
         outer.addWidget(self.nav)
         right=QVBoxLayout();right.setContentsMargins(24,20,24,20);outer.addLayout(right,1)
         head=QHBoxLayout();right.addLayout(head)
@@ -143,7 +144,9 @@ class MainWindow(QMainWindow):
         self.pages=QStackedWidget();right.addWidget(self.pages,1)
         self.statusBar().showMessage('離線本地處理 · 資料自動保存 · 不傳送學生資料')
         self.build_dashboard();self.build_students();self.build_courses();self.build_rooms();self.build_batches()
-        self.build_allocation();self.build_seats();self.build_generation();self.build_settings()
+        self.build_allocation();self.build_seats();self.build_generation()
+        self.paper_page=PaperPage(self.manager,self);self.pages.addWidget(self.paper_page)
+        self.build_settings()
         self.nav.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.session_combo.currentIndexChanged.connect(self.refresh_workflow)
         self.nav.setCurrentRow(0);self.refresh_all()
@@ -374,6 +377,7 @@ class MainWindow(QMainWindow):
 
     def refresh_workflow(self):
         sid=self.session_combo.currentData();self.class_cards.clear();self.room_cards.clear();self.pending_list.clear()
+        self.paper_page.load_session(sid)
         self.class_cards.session_id=sid
         if not sid:
             self.allocation_stats.setText('請先建立考試場次。');self.warnings.clear();populate(self.seat_room,[]);self.refresh_seats();self.refresh_generation();return
@@ -747,6 +751,21 @@ class MainWindow(QMainWindow):
     def check_generation(self,value):
         for i in range(self.generation_table.rowCount()):self.generation_table.item(i,0).setCheckState(Qt.CheckState.Checked if value else Qt.CheckState.Unchecked)
 
+    def confirm_flagged_students(self,aids):
+        alerts=self.manager.flagged_in_allocations(aids)
+        if not alerts:return True
+        reminder=StudentFlagReminder(alerts,len(aids),self)
+        if reminder.exec()==QDialog.DialogCode.Accepted:return True
+        if reminder.allocation_id:
+            al=next(a for a in self.manager.allocations() if a['id']==reminder.allocation_id)
+            self.select_session(al['session_id'],6);self.seat_search.clear()
+            self.seat_room.setCurrentIndex(self.seat_room.findData(al['id']))
+            for i in range(self.seat_tree.topLevelItemCount()):
+                item=self.seat_tree.topLevelItem(i)
+                if item.data(0,Qt.ItemDataRole.UserRole)==reminder.assignment_id:
+                    self.seat_tree.setCurrentItem(item);self.seat_tree.scrollToItem(item);break
+        return False
+
     def generate_selected(self):
         aids=[self.generation_table.item(i,0).data(Qt.ItemDataRole.UserRole)['id'] for i in range(self.generation_table.rowCount()) if self.generation_table.item(i,0).checkState()==Qt.CheckState.Checked]
         if not aids:raise ValidationError('請勾選要生成的考場項目。')
@@ -757,18 +776,7 @@ class MainWindow(QMainWindow):
         if errors:raise ValidationError('生成前檢查未通過：\n'+'\n'.join(dict.fromkeys(errors)))
         alerts=self.manager.flagged_in_allocations(aids)
         if alerts:
-            reminder=StudentFlagReminder(alerts,len(aids),self)
-            if reminder.exec()!=QDialog.DialogCode.Accepted:
-                if reminder.allocation_id:
-                    al=next(a for a in self.manager.allocations() if a['id']==reminder.allocation_id)
-                    self.select_session(al['session_id'],6)
-                    self.seat_search.clear()
-                    self.seat_room.setCurrentIndex(self.seat_room.findData(al['id']))
-                    for i in range(self.seat_tree.topLevelItemCount()):
-                        item=self.seat_tree.topLevelItem(i)
-                        if item.data(0,Qt.ItemDataRole.UserRole)==reminder.assignment_id:
-                            self.seat_tree.setCurrentItem(item);self.seat_tree.scrollToItem(item);break
-                return
+            if not self.confirm_flagged_students(aids):return
         elif QMessageBox.question(self,'生成確認',f'即將生成 {len(aids)} 份 Excel，是否繼續？')!=QMessageBox.StandardButton.Yes:return
         folder=QFileDialog.getExistingDirectory(self,'選擇輸出資料夾')
         if not folder:return

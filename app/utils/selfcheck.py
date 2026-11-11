@@ -30,9 +30,15 @@ def selfcheck(app,folder):
             order=[r['id'] for r in m.assigned(sid)];order.insert(0,order.pop());m.reorder(aid,order)
             m.complete(sid)
             path=ExcelExporter(m).generate(aid,folder)
+            from app.services.papers import PaperManager
+            from app.exporters.papers import PaperExporter
+            papers=PaperManager(m);settings=papers.settings(sid)
+            settings.update(approval='not_required',book='closed')
+            settings['cn'].update(pages=10,formula='none');papers.save(sid,settings)
+            documents=PaperExporter(m).generate(sid,folder,['review','cover','bag','statistics'])
             window=MainWindow(m);window.show();app.processEvents()
-            if window.pages.count()!=9:raise RuntimeError('Missing UI pages')
-            result={'status':'passed','ui_pages':9,'students':3,'sheets':['Attendance','Seat Plan'],'output':str(path)}
+            if window.pages.count()!=10:raise RuntimeError('Missing UI pages')
+            result={'status':'passed','ui_pages':10,'students':3,'sheets':['Attendance','Seat Plan'],'output':str(path),'paper_documents':str(documents)}
             report.write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf8')
             return result
         finally:

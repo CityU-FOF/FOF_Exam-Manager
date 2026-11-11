@@ -12,8 +12,8 @@ from conftest import setup_exam
 def test_navigation_and_native_room_drop(qtbot,manager):
     sid,classes,rooms=setup_exam(manager,(5,))
     win=MainWindow(manager);qtbot.addWidget(win);win.show();win.select_session(sid,5)
-    assert win.pages.count()==9
-    for i in range(9):win.nav.setCurrentRow(i);assert win.pages.currentIndex()==i
+    assert win.pages.count()==10
+    for i in range(10):win.nav.setCurrentRow(i);assert win.pages.currentIndex()==i
     win.nav.setCurrentRow(5)
     qtbot.wait(50)
     item=win.room_cards.item(0);aid=item.data(Qt.ItemDataRole.UserRole)
@@ -87,6 +87,6 @@ def test_combined_names_preview_and_save(qtbot,manager,tmp_path,monkeypatch):
     monkeypatch.setattr(QMessageBox,'question',lambda *a,**k:QMessageBox.StandardButton.Yes)
     dialog.commit()
     win=MainWindow(manager);qtbot.addWidget(win)
-    assert 'v1.5.0' in win.windowTitle()
+    assert 'v1.6.0' in win.windowTitle()
     assert win.students_table.item(0,1).text()=='陳大文'
     assert win.students_table.item(0,2).text()=='CHAN TAI MAN'
