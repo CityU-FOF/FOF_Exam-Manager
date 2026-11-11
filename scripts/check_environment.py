@@ -22,6 +22,8 @@ def check():
     from app.exporters.paper_forms import artwork
     from openpyxl.drawing.image import Image
     for name in ('review','cover','bag'):Image(artwork(name))._data()
+    from app.exporters.paper_pdf import load_template
+    for name in ('review','bag'):load_template(name)
     from app.templates.engine import template_path
     from openpyxl import load_workbook
     with_template=load_workbook(template_path(),keep_links=False)

@@ -1,11 +1,11 @@
-FOF 考試座位及簽到表管理系統 — Windows 使用方法
+FOF 考試座位及簽到表管理系統 v1.7.0 — Windows 使用方法
 
 1. 在 GitHub 按 Code → Download ZIP，將 ZIP 完整解壓縮。
    不要直接在 ZIP 裡執行批次檔；scripts、app、resources 等資料夾都要保留。
 2. 安裝 標準 64 位元 Python 3.12（建議）、3.13 或 3.14，安裝時勾選 Add Python to PATH。
    Python 官方下載：https://www.python.org/downloads/windows/
 3. 首次使用：雙擊「首次安裝.bat」，等待顯示 Setup completed。
-   這一步需要網絡，用來安裝 PySide6、openpyxl 和 Pillow。
+   這一步需要網絡，用來安裝 PySide6、openpyxl、Pillow 和 pypdf。
    v1.2.1 起套件放在 %LOCALAPPDATA%\FOFExamManager\venv 的短路徑，
    避免 GitHub 解壓資料夾長名稱造成 Windows 安裝失敗。
 4. 日常使用：雙擊「啟動程式.bat」，即可開啟系統，毋須自行輸入指令。
@@ -54,3 +54,13 @@ v1.6.2 安裝修正
    會優先選3.12，亦接受標準3.13／3.14；舊版不相容venv會另行保留再重建。
    學生資料和考場編排保留。未安裝相容Python時會先停止，不更動舊環境。
 4. 看見 Setup completed 後，再執行「啟動程式.bat」。
+
+
+v1.7.0 原PDF文件生成
+1. 請重新執行「首次安裝.bat」，安裝新增的pypdf套件。
+2. 附件一：固定Calvan、BAECF，送審日期為生成當日；考試日期仍取場次。
+3. 附件三：每個有學生的考場各一份一頁PDF，列出該考場授課班、人數及應考總數。
+   例如G2108：32 (3B), 30 (3C)，應考62。四個考場就有四份PDF。
+   同班拆房只計該房學生，不按行政班，也不加入後備印刷份數。
+4. PDF保留原頁面，列印選「實際大小／100%」。需要多個試卷袋時重複列印同一份。
+5. 附件二的PDF／XFA新流程暫未整合。原有設定、已審批PDF及QR保留。

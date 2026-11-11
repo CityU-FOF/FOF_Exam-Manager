@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabe
 from app.services.papers import PaperManager,LANGUAGES,print_quantities
 from app.exporters.papers import PaperExporter
 from app.utils.output import default_output_directory
+from app.exporters.paper_pdf import REVIEW_SENDER,REVIEW_PROGRAMME
 
 
 class PaperPage(QWidget):
@@ -22,8 +23,9 @@ class PaperPage(QWidget):
             ('待確認','pending'),('需要審批：保留已審批PDF及原QR','required'),('不需審批：由本系統填寫官方封面','not_required')])
         self.add_combo(form,self.editors,'book','開／閉卷（自行生成封面時必填）',[
             ('待選擇','pending'),('閉卷','closed'),('開卷','open')])
-        for key,label in [('sender','送審人'),('submission_date','送審日期（YYYY-MM-DD）')]:
-            e=QLineEdit();self.editors[key]=e;form.addRow(label,e);e.textChanged.connect(self.changed)
+        form.addRow('送審人（固定）',QLabel(REVIEW_SENDER))
+        form.addRow('評審表課程（固定）',QLabel(REVIEW_PROGRAMME))
+        form.addRow('送審日期（自動）',QLabel('生成當日日期'))
         self.add_spin(form,self.editors,'sheets_per_ream','每令A4張數',100000)
         self.add_spin(form,self.editors,'reams_per_box','每箱令數',1000)
         tabs=QTabWidget();content.addWidget(tabs)
@@ -42,11 +44,11 @@ class PaperPage(QWidget):
             self.cover_labels[language].setWordWrap(True);coverbar.addWidget(self.cover_labels[language],1)
             b=QPushButton('匯入已審批PDF');b.clicked.connect(lambda _,l=language:self.import_cover(l));coverbar.addWidget(b)
             lf.addRow('已審批原封面',coverbar)
-        note=QLabel('A班為英文卷，其餘授課班為中文卷。每班多1份後備；內容雙面、封面另印1張單面。\n附件一每科一份；試卷袋每個考場一頁，可重複列印多份。評審結論、現場情況與簽署留白。')
+        note=QLabel('A班為英文卷，其餘授課班為中文卷。每班多1份後備；內容雙面、封面另印1張單面。\n附件一每科一份PDF；附件三每考場一份一頁PDF，列出該考場班級及實際人數，可重複列印。評審結論、現場情況與簽署留白。')
         note.setWordWrap(True);content.addWidget(note)
         self.total=QLabel();self.total.setWordWrap(True);self.total.setTextFormat(Qt.TextFormat.PlainText);content.addWidget(self.total)
         choices=QHBoxLayout();layout.addLayout(choices);self.kinds={}
-        for key,label,checked in [('review','附件一評審表',True),('cover','附件二封面',False),('bag','附件三試卷袋',True),('statistics','印刷統計',False)]:
+        for key,label,checked in [('review','附件一評審表 PDF',True),('cover','附件二封面',False),('bag','附件三試卷袋 PDF',True),('statistics','印刷統計',False)]:
             b=QCheckBox(label);b.setChecked(checked);self.kinds[key]=b;choices.addWidget(b)
         bar=QHBoxLayout();layout.addLayout(bar)
         b=QPushButton('生成選中的考務文件');b.clicked.connect(self.generate);bar.addWidget(b)
@@ -81,6 +83,7 @@ class PaperPage(QWidget):
             if isinstance(e,QComboBox):return e.currentData()
             return e.text().strip()
         result={k:value(e) for k,e in self.editors.items()}
+        result.update(sender=REVIEW_SENDER,submission_date='')
         for language,editors in self.language_editors.items():result[language]={k:value(e) for k,e in editors.items()}
         return result
 
@@ -126,7 +129,7 @@ class PaperPage(QWidget):
             if not folder:return
             self.output_folder=Path(folder);self.last_output=None
             self.last_output=PaperExporter(self.manager).generate(self.sid,folder,[k for k,b in self.kinds.items() if b.isChecked()])
-            QMessageBox.information(self,'考務文件已生成','已輸出至：\n'+str(self.last_output)+'\nExcel請修改「資料」頁B欄；只列印官方表格頁。')
+            QMessageBox.information(self,'考務文件已生成','已輸出至：\n'+str(self.last_output)+'\n附件一、三為原版PDF，列印請選「實際大小／100%」。')
         except Exception as exc:QMessageBox.warning(self,'未能生成',str(exc))
 
     def open_output(self):

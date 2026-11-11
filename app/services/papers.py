@@ -95,5 +95,13 @@ class PaperManager:
             key=row['class_id']
             if key not in groups:groups[key]=dict(name=row['class_name'],language=language_for_class(row['class_name']),students=0)
             groups[key]['students']+=1
-        rooms=[dict(name=a['room_name'],count=a['count'],allocation_id=a['id']) for a in self.manager.allocations(sid)]
+        by_room={}
+        for row in self.manager.assigned(sid):
+            classes=by_room.setdefault(row['allocation_id'],{})
+            name=row['class_name'];classes[name]=classes.get(name,0)+1
+        rooms=[]
+        for allocation in self.manager.allocations(sid):
+            classes=by_room.get(allocation['id'],{})
+            rooms.append(dict(name=allocation['room_name'],count=sum(classes.values()),allocation_id=allocation['id'],
+                classes=[dict(name=name,count=classes[name]) for name in sorted(classes,key=str.casefold)]))
         return dict(info=info,groups=list(groups.values()),rooms=rooms,pending=len(self.manager.pending(sid)))

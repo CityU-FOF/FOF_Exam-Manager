@@ -10,7 +10,8 @@ from openpyxl.styles import Font,Alignment
 from app.services.papers import PaperManager,LANGUAGES,print_quantities
 from app.models.records import ValidationError
 from app.templates.engine import write_text
-from app.exporters.paper_forms import form_workbook,review_page,bag_page,cover_page
+from app.exporters.paper_forms import form_workbook,cover_page
+from app.exporters.paper_pdf import generation_date,review_fields,bag_fields,write_form,load_template
 from app.utils.paper_support import ensure_paper_support
 
 
@@ -103,18 +104,25 @@ class PaperExporter:
                     if settings['book'] not in ('open','closed'):raise ValidationError('請選擇開卷或閉卷。')
                     if int(settings[language]['pages'])<=0:raise ValidationError(LANGUAGES[language]+'：請填內容頁數。')
                     if language=='en' and not info['name_en']:raise ValidationError('英文卷封面需要科目英文名稱，請先在科目管理補齊。')
-        if kinds & {'review','bag'} or ('cover' in kinds and not covers):ensure_paper_support()
+        if 'review' in kinds:load_template('review')
+        if 'bag' in kinds:load_template('bag')
+        if 'cover' in kinds and not covers:ensure_paper_support()
+        generated_date=generation_date()
         folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
         base=re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',f'{info["code"]}_{info["date"]}_考務文件')
         final=folder/base;counter=2
         while final.exists():final=folder/(base+f'_{counter}');counter+=1
         with tempfile.TemporaryDirectory(prefix='.fof-paper-',dir=folder) as temp:
             temp=Path(temp)
-            if 'review' in kinds:form_workbook(temp/'附件一_試卷評審記錄.xlsx',[review_page(info,settings)])
+            if 'review' in kinds:write_form(temp/'附件一_試卷評審記錄.pdf','review',review_fields(info,generated_date))
             if 'bag' in kinds:
-                pages=[bag_page(info,r) for r in context['rooms'] if r['count']]
-                if not pages:raise ValidationError('沒有已分配學生的考場。')
-                form_workbook(temp/'附件三_試卷袋封面.xlsx',pages)
+                rooms=[r for r in context['rooms'] if r['count']]
+                if not rooms:raise ValidationError('沒有已分配學生的考場。')
+                for room in rooms:
+                    component=re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',room['name']).strip(' .') or '考場'
+                    path=temp/f'附件三_試卷袋封面_{component}.pdf';counter=2
+                    while path.exists():path=temp/f'附件三_試卷袋封面_{component}_{counter}.pdf';counter+=1
+                    write_form(path,'bag',bag_fields(info,room))
             if 'cover' in kinds:
                 if covers:
                     for language,data in covers.items():(temp/f'附件二_{LANGUAGES[language]}_已審批原封面.pdf').write_bytes(data)
@@ -122,8 +130,10 @@ class PaperExporter:
                     pages=[cover_page(info,settings,l,[g['name'] for g in context['groups'] if g['language']==l]) for l in languages]
                     form_workbook(temp/'附件二_試題封面.xlsx',pages)
             if statistics:statistics_workbook(temp/'印刷用紙統計.xlsx',context,statistics)
-            manifest=dict(course=info['code'],exam_date=info['date'],files={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in temp.iterdir()})
+            manifest=dict(course=info['code'],exam_date=info['date'],generated_date=generated_date,
+                rooms=[dict(name=r['name'],count=r['count'],classes=r['classes']) for r in context['rooms'] if r['count']],
+                files={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in temp.iterdir()})
             (temp/'文件校驗.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf8')
-            (temp/'列印及修改說明.txt').write_text('Excel：請在「資料」頁B欄修改內容，列印頁文字框已連結相應儲存格；亦可直接編輯文字框。\n只列印官方表格頁，不印「資料」頁。版面保留官方模板影像，A4直向一頁，邊界設為0（模板本身已有留白）。\n試卷袋每個考場一頁；需要多個袋時，可重複列印同一頁。實考、缺考、印刷／使用／未用及現場情況按實際情況填寫。\n已審批PDF按原位元組匯出，QR不修改。文件校驗.json可核對SHA-256。\n若以openpyxl等第三方工具重新儲存Excel，可能移除文字框；請用Microsoft Excel編輯。\n',encoding='utf8')
+            (temp/'列印及修改說明.txt').write_text('附件一、三：直接填入官方原PDF，列印選「實際大小／100%」。資料有改動時，請在程式修改後重新生成。\n附件一固定送審人Calvan、課程BAECF、送審日期為生成當日（UTC+8）。考試日期仍使用場次日期。\n附件三每個已分配學生的考場各一份一頁PDF；科目欄下方列出該考場實際授課班及人數，應考欄為該考場總數，不包括後備份數。需要多個袋時重複列印同一份。\n實考、缺考、印刷／使用／未用及現場情況按實際情況填寫。\n附件二維持原有方式，本次未整合新XFA流程；若輸出Excel，請修改「資料」頁B欄，只列印官方表格頁。\n已審批PDF按原位元組匯出，QR不修改。文件校驗.json可核對SHA-256。\n',encoding='utf8')
             os.rename(temp,final)
         return final

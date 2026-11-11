@@ -6,6 +6,9 @@ from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 import pytest
 from openpyxl import load_workbook
+from pypdf import PdfReader
+
+pytestmark=pytest.mark.usefixtures("qapp")
 from PySide6.QtWidgets import QFileDialog,QMessageBox
 from app.database.store import Store
 from app.services.manager import Manager
@@ -94,41 +97,29 @@ def test_pending_approval_and_missing_pdf_block_without_partial_files(manager,tm
     assert not (tmp_path/'out').exists()
 
 
-def test_three_excel_forms_retain_artwork_and_linked_editable_fields(manager,tmp_path):
+def test_original_pdf_forms_and_unchanged_cover_excel(manager,tmp_path):
     sid,cl,rooms,pm=setup_documents(manager)
     student=manager.assigned(sid)[0];manager.set_student_flag(student['student_id'],'PRIVATE_FLAG_MUST_NOT_PRINT_985')
     output=PaperExporter(manager).generate(sid,tmp_path,['review','cover','bag','statistics'])
-    files=list(output.glob('*.xlsx'));assert len(files)==4
-    ns={'x':'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing','a':'http://schemas.openxmlformats.org/drawingml/2006/main'}
-    for file in files:
-        with ZipFile(file) as z:
-            assert z.testzip() is None
-            assert not any(b'PRIVATE_FLAG_MUST_NOT_PRINT_985' in z.read(n) for n in z.namelist())
-            if file.name=='印刷用紙統計.xlsx':continue
-            media=[n for n in z.namelist() if n.startswith('xl/media/')]
-            assert media
-            assert all(z.read(n).startswith(b'\x89PNG') for n in media)
-            drawings=[n for n in z.namelist() if n.startswith('xl/drawings/drawing') and n.endswith('.xml')]
-            if file.name.startswith('附件一'):assert len(drawings)==1
-            if file.name.startswith('附件三'):assert len(drawings)==2
-            for drawing in drawings:
-                root=ET.fromstring(z.read(drawing));shapes=root.findall('x:absoluteAnchor/x:sp',ns)
-                assert shapes and all(s.get('textlink').startswith("'資料'!$B$") for s in shapes)
-                from openpyxl.drawing.spreadsheet_drawing import SpreadsheetDrawing
-                parsed=SpreadsheetDrawing.from_tree(root)
-                assert len(parsed.absoluteAnchor)==len(shapes)+1
-                assert all(s.find('x:txBody/a:bodyPr',ns) is not None for s in shapes)
-    wb=load_workbook(next(output.glob('附件三*.xlsx')))
-    assert wb.sheetnames==['資料','G2207試卷袋','G2209試卷袋']
-    data={r[0].value:r[1].value for r in wb['資料'].iter_rows(min_row=2)}
-    assert data['G2207試卷袋 · 應考人數']==3
-    assert data['G2209試卷袋 · 應考人數']==2
-    assert data['G2207試卷袋 · 現場情況／建議'] is None
-    assert not any(c.data_type=='f' for row in wb['資料'] for c in row)
-    for sheet in list(wb)[1:]:
-        assert sheet.page_setup.fitToWidth==sheet.page_setup.fitToHeight==1
-        assert sheet.page_setup.paperSize==9
-    wb.close()
+    assert len(list(output.glob('附件一*.pdf')))==1
+    assert len(list(output.glob('附件三*.pdf')))==2
+    assert len(list(output.glob('*.xlsx')))==2
+    for pdf in output.glob('*.pdf'):
+        reader=PdfReader(pdf)
+        assert len(reader.pages)==1 and list(map(float,reader.pages[0].mediabox))==[0,0,595.32,841.92]
+        assert 'PRIVATE_FLAG_MUST_NOT_PRINT_985' not in reader.pages[0].extract_text()
+    manifest=json.loads((output/'文件校驗.json').read_text())
+    assert [(r['name'],r['count'],r['classes']) for r in manifest['rooms']]==[
+        ('G2207',3,[dict(name='D',count=3)]),('G2209',2,[dict(name='E',count=2)])]
+    # Annex two is still the original editable Excel path; no XFA code is used.
+    cover=next(output.glob('附件二*.xlsx'))
+    ns={'x':'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'}
+    with ZipFile(cover) as z:
+        assert z.testzip() is None
+        assert not any(b'PRIVATE_FLAG_MUST_NOT_PRINT_985' in z.read(n) for n in z.namelist())
+        assert [n for n in z.namelist() if n.startswith('xl/media/')]
+        drawing=ET.fromstring(z.read('xl/drawings/drawing1.xml'))
+        assert all(shape.get('textlink').startswith("'資料'!$B$") for shape in drawing.findall('x:absoluteAnchor/x:sp',ns))
     again=PaperExporter(manager).generate(sid,tmp_path,['review'])
     assert again!=output and output.exists()
 
@@ -206,17 +197,17 @@ def test_review_and_bags_need_no_approved_cover_or_page_counts(manager,tmp_path)
     sid,_,_,pm=setup_documents(manager)
     pm.save(sid,default_settings())
     output=PaperExporter(manager).generate(sid,tmp_path,['review','bag'])
-    assert {p.name for p in output.glob('*.xlsx')}=={'附件一_試卷評審記錄.xlsx','附件三_試卷袋封面.xlsx'}
+    assert {p.name for p in output.glob('*.pdf')}=={'附件一_試卷評審記錄.pdf','附件三_試卷袋封面_G2207.pdf','附件三_試卷袋封面_G2209.pdf'}
     assert pm.covers(sid)=={}
 
 
-def test_missing_image_support_explains_repair_without_creating_outputs(manager,tmp_path,monkeypatch):
+def test_legacy_cover_missing_image_support_explains_repair_without_creating_outputs(manager,tmp_path,monkeypatch):
     import openpyxl.drawing.image
     sid,_,_,_=setup_documents(manager)
     monkeypatch.setattr(openpyxl.drawing.image,'PILImage',None)
     folder=tmp_path/'not_created'
     with pytest.raises(RuntimeError,match='首次安裝.bat') as error:
-        PaperExporter(manager).generate(sid,folder,['review','bag'])
+        PaperExporter(manager).generate(sid,folder,['cover'])
     assert '與試題審批無關' in str(error.value)
     assert not folder.exists()
 
@@ -241,6 +232,7 @@ def test_failed_generation_retains_selected_output_folder(qtbot,manager,tmp_path
     from app.ui.papers import PaperPage,QDesktopServices
     sid,_,_,_=setup_documents(manager)
     page=PaperPage(manager);qtbot.addWidget(page);page.load_session(sid)
+    page.kinds['cover'].setChecked(True)
     page.last_output=tmp_path/'previous';page.last_output.mkdir()
     chosen=tmp_path/'chosen';chosen.mkdir()
     monkeypatch.setattr(QFileDialog,'getExistingDirectory',lambda *a,**k:str(chosen))
