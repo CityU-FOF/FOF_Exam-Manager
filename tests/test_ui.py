@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from PySide6.QtCore import Qt,QMimeData,QPointF
 from PySide6.QtGui import QDropEvent
 from PySide6.QtWidgets import QDialog,QMessageBox
@@ -76,6 +77,16 @@ def test_open_output_uses_local_file_url(qtbot,manager,tmp_path,monkeypatch):
     win.open_output();assert len(calls)==1 and calls[0].isLocalFile()
 
 
+def test_generation_output_can_open_before_first_generation(qtbot,manager,monkeypatch):
+    from app.ui.window import QDesktopServices
+    from app.utils.output import default_output_directory
+    win=MainWindow(manager);qtbot.addWidget(win)
+    calls=[];monkeypatch.setattr(QDesktopServices,'openUrl',lambda url:calls.append(url) or True)
+    win.open_output()
+    assert default_output_directory(manager).is_dir()
+    assert Path(calls[0].toLocalFile())==default_output_directory(manager)
+
+
 def test_combined_names_preview_and_save(qtbot,manager,tmp_path,monkeypatch):
     wb=Workbook();s=wb.active
     s.append(['帳號','姓名','英文姓名','授課班','科目代碼'])
@@ -87,6 +98,6 @@ def test_combined_names_preview_and_save(qtbot,manager,tmp_path,monkeypatch):
     monkeypatch.setattr(QMessageBox,'question',lambda *a,**k:QMessageBox.StandardButton.Yes)
     dialog.commit()
     win=MainWindow(manager);qtbot.addWidget(win)
-    assert 'v1.6.0' in win.windowTitle()
+    assert 'v1.6.1' in win.windowTitle()
     assert win.students_table.item(0,1).text()=='陳大文'
     assert win.students_table.item(0,2).text()=='CHAN TAI MAN'

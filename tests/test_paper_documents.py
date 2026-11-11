@@ -200,3 +200,54 @@ def test_bag_generation_preserves_special_student_reminder(qtbot,manager,monkeyp
     window.paper_page.generate()
     assert window.nav.currentRow()==6
     assert window.seat_tree.currentItem().data(0,Qt.ItemDataRole.UserRole)==student['id']
+
+
+def test_review_and_bags_need_no_approved_cover_or_page_counts(manager,tmp_path):
+    sid,_,_,pm=setup_documents(manager)
+    pm.save(sid,default_settings())
+    output=PaperExporter(manager).generate(sid,tmp_path,['review','bag'])
+    assert {p.name for p in output.glob('*.xlsx')}=={'附件一_試卷評審記錄.xlsx','附件三_試卷袋封面.xlsx'}
+    assert pm.covers(sid)=={}
+
+
+def test_missing_image_support_explains_repair_without_creating_outputs(manager,tmp_path,monkeypatch):
+    import openpyxl.drawing.image
+    sid,_,_,_=setup_documents(manager)
+    monkeypatch.setattr(openpyxl.drawing.image,'PILImage',None)
+    folder=tmp_path/'not_created'
+    with pytest.raises(RuntimeError,match='首次安裝.bat') as error:
+        PaperExporter(manager).generate(sid,folder,['review','bag'])
+    assert '與試題審批無關' in str(error.value)
+    assert not folder.exists()
+
+
+def test_paper_output_opens_before_generation_and_reports_desktop_failure(qtbot,manager,monkeypatch):
+    from app.ui.papers import PaperPage,QDesktopServices
+    page=PaperPage(manager);qtbot.addWidget(page)
+    opened=[]
+    monkeypatch.setattr(QDesktopServices,'openUrl',lambda url:opened.append(url) or True)
+    assert not page.output_folder.exists() and page.last_output is None
+    page.open_output()
+    assert page.output_folder.is_dir() and Path(opened[0].toLocalFile())==page.output_folder
+    messages=[]
+    monkeypatch.setattr(QDesktopServices,'openUrl',lambda url:False)
+    monkeypatch.setattr(QMessageBox,'warning',lambda *a:messages.append(a[-1]))
+    page.open_output()
+    assert str(page.output_folder) in messages[0]
+
+
+def test_failed_generation_retains_selected_output_folder(qtbot,manager,tmp_path,monkeypatch):
+    import openpyxl.drawing.image
+    from app.ui.papers import PaperPage,QDesktopServices
+    sid,_,_,_=setup_documents(manager)
+    page=PaperPage(manager);qtbot.addWidget(page);page.load_session(sid)
+    page.last_output=tmp_path/'previous';page.last_output.mkdir()
+    chosen=tmp_path/'chosen';chosen.mkdir()
+    monkeypatch.setattr(QFileDialog,'getExistingDirectory',lambda *a,**k:str(chosen))
+    monkeypatch.setattr(openpyxl.drawing.image,'PILImage',None)
+    messages=[];monkeypatch.setattr(QMessageBox,'warning',lambda *a:messages.append(a[-1]))
+    page.generate()
+    assert messages and page.last_output is None and page.output_folder==chosen
+    opened=[];monkeypatch.setattr(QDesktopServices,'openUrl',lambda url:opened.append(url) or True)
+    page.open_output()
+    assert Path(opened[0].toLocalFile())==chosen and not list(chosen.iterdir())

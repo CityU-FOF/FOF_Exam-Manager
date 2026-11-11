@@ -17,6 +17,7 @@ from app.models.programmes import programme_values,PROGRAMMES,FACULTY
 from app.models.records import StudentRecord,CapacityError,ValidationError
 from app.database.store import uid,now
 from app.exporters.excel import ExcelExporter,safe_filename
+from app.utils.output import default_output_directory
 
 
 COURSE_FIELDS=[('code','科目編號','line'),('name_cn','中文名稱','line'),('name_en','英文名稱','line'),
@@ -131,7 +132,7 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.6.0');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.6.1');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
@@ -778,7 +779,7 @@ class MainWindow(QMainWindow):
         if alerts:
             if not self.confirm_flagged_students(aids):return
         elif QMessageBox.question(self,'生成確認',f'即將生成 {len(aids)} 份 Excel，是否繼續？')!=QMessageBox.StandardButton.Yes:return
-        folder=QFileDialog.getExistingDirectory(self,'選擇輸出資料夾')
+        folder=QFileDialog.getExistingDirectory(self,'選擇輸出資料夾',str(self.last_output or default_output_directory(self.manager)))
         if not folder:return
         progress=QProgressDialog('正在生成文件…','取消剩餘項目',0,len(aids),self);progress.setWindowModality(Qt.WindowModality.ApplicationModal);progress.setMinimumDuration(0)
         self.generation_results.clear();results=[];self.last_output=Path(folder)
@@ -803,7 +804,8 @@ class MainWindow(QMainWindow):
         if not self.last_output:
             row=self.manager.db.one("SELECT path FROM generation_logs WHERE status='成功' ORDER BY created DESC,rowid DESC LIMIT 1")
             if row:self.last_output=Path(row['path']).parent
-        if not self.last_output or not self.last_output.exists():raise ValidationError('找不到輸出資料夾，請先生成文件。')
+        if not self.last_output:self.last_output=default_output_directory(self.manager)
+        self.last_output.mkdir(parents=True,exist_ok=True)
         if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.last_output))):raise ValidationError('無法開啟資料夾，請使用檔案總管開啟輸出路徑。')
 
     def open_generated(self):

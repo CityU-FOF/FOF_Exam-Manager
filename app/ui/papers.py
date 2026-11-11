@@ -1,15 +1,18 @@
+from pathlib import Path
 from PySide6.QtCore import Qt,QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QWidget,QVBoxLayout,QHBoxLayout,QFormLayout,QLabel,QLineEdit,QComboBox,
  QSpinBox,QPushButton,QCheckBox,QTabWidget,QScrollArea,QFileDialog,QMessageBox,QDialog,QListWidget,QListWidgetItem)
 from app.services.papers import PaperManager,LANGUAGES,print_quantities
 from app.exporters.papers import PaperExporter
+from app.utils.output import default_output_directory
 
 
 class PaperPage(QWidget):
     def __init__(self,manager,parent=None):
         super().__init__(parent);self.manager=manager;self.papers=PaperManager(manager)
         self.sid=None;self.loading=False;self.last_output=None;self.editors={};self.language_editors={};self.cover_labels={}
+        self.output_folder=default_output_directory(manager)
         layout=QVBoxLayout(self)
         title=QLabel('試卷文件及印刷統計');title.setObjectName('pageTitle');layout.addWidget(title)
         self.context_label=QLabel('請先在右上方選擇考試場次。');self.context_label.setTextFormat(Qt.TextFormat.PlainText);self.context_label.setWordWrap(True);layout.addWidget(self.context_label)
@@ -119,14 +122,20 @@ class PaperPage(QWidget):
             if self.kinds['bag'].isChecked() and hasattr(host,'confirm_flagged_students'):
                 aids=[r['id'] for r in self.manager.allocations(self.sid)]
                 if not host.confirm_flagged_students(aids):return
-            folder=QFileDialog.getExistingDirectory(self,'選擇考務文件輸出資料夾')
+            folder=QFileDialog.getExistingDirectory(self,'選擇考務文件輸出資料夾',str(self.output_folder))
             if not folder:return
+            self.output_folder=Path(folder);self.last_output=None
             self.last_output=PaperExporter(self.manager).generate(self.sid,folder,[k for k,b in self.kinds.items() if b.isChecked()])
             QMessageBox.information(self,'考務文件已生成','已輸出至：\n'+str(self.last_output)+'\nExcel請修改「資料」頁B欄；只列印官方表格頁。')
         except Exception as exc:QMessageBox.warning(self,'未能生成',str(exc))
 
     def open_output(self):
-        if self.last_output:QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.last_output)))
+        try:
+            folder=self.last_output or self.output_folder
+            folder.mkdir(parents=True,exist_ok=True)
+            if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder.resolve()))):
+                raise OSError('無法開啟資料夾，請用檔案總管開啟：\n'+str(folder))
+        except Exception as exc:QMessageBox.warning(self,'無法打開輸出資料夾',str(exc))
 
     def batch_statistics(self):
         try:
@@ -142,8 +151,9 @@ class PaperPage(QWidget):
             b=QPushButton('確認統計');b.clicked.connect(dialog.accept);layout.addWidget(b)
             if dialog.exec()!=QDialog.DialogCode.Accepted:return
             chosen=[listing.item(i).data(Qt.ItemDataRole.UserRole) for i in range(listing.count()) if listing.item(i).checkState()==Qt.CheckState.Checked]
-            folder=QFileDialog.getExistingDirectory(self,'選擇印刷總表輸出資料夾')
+            folder=QFileDialog.getExistingDirectory(self,'選擇印刷總表輸出資料夾',str(self.output_folder))
             if not folder:return
+            self.output_folder=Path(folder);self.last_output=None
             path=PaperExporter(self.manager).batch_statistics(chosen,folder);self.last_output=path.parent
             QMessageBox.information(self,'印刷總表已輸出',str(path))
         except Exception as exc:QMessageBox.warning(self,'未能統計',str(exc))

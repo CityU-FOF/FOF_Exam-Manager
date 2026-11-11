@@ -11,6 +11,7 @@ from app.services.papers import PaperManager,LANGUAGES,print_quantities
 from app.models.records import ValidationError
 from app.templates.engine import write_text
 from app.exporters.paper_forms import form_workbook,review_page,bag_page,cover_page
+from app.utils.paper_support import ensure_paper_support
 
 
 def statistics_workbook(path,context,statistics):
@@ -102,6 +103,7 @@ class PaperExporter:
                     if settings['book'] not in ('open','closed'):raise ValidationError('請選擇開卷或閉卷。')
                     if int(settings[language]['pages'])<=0:raise ValidationError(LANGUAGES[language]+'：請填內容頁數。')
                     if language=='en' and not info['name_en']:raise ValidationError('英文卷封面需要科目英文名稱，請先在科目管理補齊。')
+        if kinds & {'review','bag'} or ('cover' in kinds and not covers):ensure_paper_support()
         folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
         base=re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',f'{info["code"]}_{info["date"]}_考務文件')
         final=folder/base;counter=2

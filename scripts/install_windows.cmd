@@ -49,8 +49,16 @@ if exist "%FOF_VENV_DIR%\.fof-setup-complete" del /q "%FOF_VENV_DIR%\.fof-setup-
 "%FOF_PYTHON%" -m pip install --disable-pip-version-check %FOF_PIP_REPAIR% -r requirements.txt
 if not "%errorlevel%"=="0" goto failed
 echo [3/3] Checking Qt, Excel support, and the official template...
-"%FOF_PYTHON%" -c "from PySide6 import QtWidgets; import openpyxl; from PIL import Image; from app.exporters.paper_forms import artwork; assert all(artwork(n).is_file() for n in ('review','cover','bag')); from app.templates.engine import template_path; from openpyxl import load_workbook; w=load_workbook(template_path(),keep_links=False); assert w.sheetnames==['Attendance','Seat Plan']; w.close()"
+"%FOF_PYTHON%" "%~dp0check_environment.py"
+if "%errorlevel%"=="0" goto verified_environment
+rem Metadata may exist even when a package is incomplete; repair it once.
+echo Repairing incomplete packages...
+"%FOF_PYTHON%" -m pip install --disable-pip-version-check --force-reinstall -r requirements.txt
 if not "%errorlevel%"=="0" goto failed
+"%FOF_PYTHON%" "%~dp0check_environment.py"
+if not "%errorlevel%"=="0" goto failed
+
+:verified_environment
 echo verified>"%FOF_VENV_DIR%\.fof-setup-complete"
 if not "%errorlevel%"=="0" goto failed
 echo.

@@ -14,6 +14,7 @@ from openpyxl.drawing.spreadsheet_drawing import AbsoluteAnchor,XDRPoint2D,XDRPo
 from openpyxl.styles import Font,Alignment
 from openpyxl.worksheet.page import PageMargins
 from app.templates.engine import write_text
+from app.utils.paper_support import ensure_paper_support
 
 X='http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'
 A='http://schemas.openxmlformats.org/drawingml/2006/main'
@@ -57,6 +58,7 @@ def text_shape(parent,index,cell,text,box,size=12,align='l',white=False,east_asi
 
 def form_workbook(path,pages):
     """pages: (sheet name, background name, [(label,value,box,size,align)])."""
+    ensure_paper_support()
     wb=Workbook();data=wb.active;data.title='資料'
     data.append(['欄位（按表格分組）','可修改的內容'])
     data['D1']='修改B欄會更新列印表格；亦可直接選取列印頁文字框修改。只列印官方表格頁，不列印本資料頁。'
