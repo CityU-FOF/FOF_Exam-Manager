@@ -1,0 +1,58 @@
+[
+  {
+    "name": "G2108",
+    "count": 62,
+    "classes": [
+      {
+        "name": "3B",
+        "count": 32
+      },
+      {
+        "name": "3C",
+        "count": 30
+      }
+    ]
+  },
+  {
+    "name": "G2110",
+    "count": 58,
+    "classes": [
+      {
+        "name": "3D",
+        "count": 28
+      },
+      {
+        "name": "3F",
+        "count": 30
+      }
+    ]
+  },
+  {
+    "name": "G2112",
+    "count": 11,
+    "classes": [
+      {
+        "name": "3G",
+        "count": 5
+      },
+      {
+        "name": "3H",
+        "count": 6
+      }
+    ]
+  },
+  {
+    "name": "G2114",
+    "count": 7,
+    "classes": [
+      {
+        "name": "3I",
+        "count": 4
+      },
+      {
+        "name": "3J",
+        "count": 3
+      }
+    ]
+  }
+]

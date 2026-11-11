@@ -1,8 +1,21 @@
 # 原始碼 ZIP
 
-PDF原頁面填寫研究：[下載測試樣本 ZIP](FOF_PDF_Form_Proof.zip) · [逐份PDF及預覽](pdf-form-proof/README.md)。這是獨立可行性樣本，尚未改變v1.6.2正式輸出流程，不需重新安裝程式。
+PDF原頁面填寫研究：[下載測試樣本 ZIP](FOF_PDF_Form_Proof.zip) · [逐份PDF及預覽](pdf-form-proof/README.md)。這是最初研究樣本；附件一／三已在v1.7.0正式整合，附件二XFA仍未整合。最新[正式生成示例](v1.7.0-samples/README.md)已套用Calvan、BAECF及考場班級人數。
 
-## v1.6.2（目前版本）
+## v1.7.0（目前版本）
+
+- 檔案：[FOF_Exam_Manager_v1.7.0.zip](FOF_Exam_Manager_v1.7.0.zip)
+- 原始碼版本：`917c1f73cbc6510362ee10c97c986bc01974b0db`
+- SHA-256：`6260ba26da1cc8239fe8e409432e07cfac14d2097bb2462c6039eabde2b5627a`
+- [實際PDF示例及預覽](v1.7.0-samples/README.md)
+
+附件一／三改為原PDF直接填字。附件一固定送審人Calvan、課程BAECF，送審日期為生成當日（UTC+8）。附件三每個有學生的考場各出一份一頁PDF，列出該考場授課班及實際人數，例如G2108的32 (3B)、30 (3C)，應考62；同班拆場亦按各房實際分配計數，不加入後備份數。
+
+關閉舊程式，完整解壓至新資料夾，執行「首次安裝.bat」安裝新增的純Python pypdf套件，看到Setup completed後執行「啟動程式.bat」。沿用標準64位元Python 3.12–3.14及原有本機資料，無需重新匯入學生。
+
+附件二本次未整合新的PDF／XFA流程。PDF列印選「實際大小／100%」，資料改動後重新生成。177項測試通過、2項私人附件測試略過；解壓ZIP後套件／資源檢查、生成自檢及Linux打包自檢通過，Windows實際列印仍待實機確認。
+
+## v1.6.2（保留舊版）
 
 - 檔案：[FOF_Exam_Manager_v1.6.2.zip](FOF_Exam_Manager_v1.6.2.zip)
 - 原始碼版本：`551d898f14353d7822a1544d47b6092dc6325700`
