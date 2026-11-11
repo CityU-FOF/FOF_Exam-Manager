@@ -4,6 +4,8 @@
 
 ## 從 GitHub 下載
 
+v1.5.0 亦提供固定檔名的[完整原始碼 ZIP](downloads/FOF_Exam_Manager_v1.5.0.zip)，校驗值及下載方法見 [downloads/README.md](downloads/README.md)。若舊 archive 連結為 404，先登入有此儲存庫存取權的 GitHub 帳戶，開啟 ZIP 檔案頁後使用 Download raw／下載原始檔。上載 ZIP 不會更改儲存庫的存取權。
+
 在本 repository 頁面點 **Code → Download ZIP**，解壓後依以下步驟安裝 Python 原始碼版。
 
 需要 Windows 獨立程式時，到 **Actions → Windows desktop build → Run workflow**，選 `main` 執行。成功後開啟該次執行，在 **Artifacts** 下載 `FOFExamManager-Windows`，解壓完整資料夾，再雙擊 `FOFExamManager.exe`。如果組織停用了 Actions，須由管理員啟用，或在 Windows 執行 [BUILD.md](BUILD.md) 的本地建置步驟。CI 產物仍需 Windows 桌面及 Excel 列印實機驗收。
