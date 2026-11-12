@@ -1,8 +1,19 @@
 # 原始碼 ZIP
 
-PDF原頁面填寫研究：[下載測試樣本 ZIP](FOF_PDF_Form_Proof.zip) · [逐份PDF及預覽](pdf-form-proof/README.md)。這是最初研究樣本；附件一／三已在v1.7.0正式整合，附件二XFA仍未整合。最新[正式生成示例](v1.7.1-samples/README.md)已套用Calvan、BAECF及考場班級人數。
+PDF原頁面填寫研究：[下載測試樣本 ZIP](FOF_PDF_Form_Proof.zip) · [逐份PDF及預覽](pdf-form-proof/README.md)。這是最初研究樣本；附件一／三已在v1.7.0正式整合，附件二XFA仍未整合。最新[正式生成示例](v1.7.2-samples/README.md)已套用Calvan、BAECF及考場班級人數。
 
-## v1.7.1（目前版本）
+## v1.7.2（目前版本）
+
+- 檔案：[FOF_Exam_Manager_v1.7.2.zip](FOF_Exam_Manager_v1.7.2.zip)
+- 原始碼版本：`ad62f2f14a9d7366f0f750e4025200a5c779e74d`
+- SHA-256：`1de265b936b91aedf046ff7748ff5fdf55169c2941353836870868ab3e50389f`
+- [附件一PDF及預覽](v1.7.2-samples/README.md)
+
+附件一中英文科目名稱改為同一行並排，英文放在中文右方；長名稱只縮小字型，不換行。附件三沿用已確認的v1.7.1版面與應考／備用份數。
+
+關閉舊程式，完整解壓新版，執行「啟動程式.bat」後重新生成附件一即可。本次沒有新增依賴或資料庫變更，原有資料沿用。37項相關測試及ZIP解壓後生成自檢通過，已實際渲染核對同一行版面。
+
+## v1.7.1（保留舊版）
 
 - 檔案：[FOF_Exam_Manager_v1.7.1.zip](FOF_Exam_Manager_v1.7.1.zip)
 - 原始碼版本：`5d410869bbe1d814bba92f4b3daf02a3a221ae62`
