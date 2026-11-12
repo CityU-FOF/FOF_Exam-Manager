@@ -41,16 +41,16 @@ def field(label,value,x,y,w,h=18,size=12,align='l'):
 
 def review_fields(info,generated_date):
     year,month,day=info['date'].split('-')
-    english=info.get('name_en','').strip()
+    english=' '.join(info.get('name_en','').split())
     if not english:raise ValidationError('附件一需要科目英文名稱，請在「科目管理」補齊。')
+    course_name=' '.join(info['name_cn'].split())+'  '+english
     return [field('學院',info['faculty'].removesuffix('學院'),420.55,28,107,17,11,'r'),
         field('課程',REVIEW_PROGRAMME,420.91,48,107,17,11,'r'),
         field('送審人',REVIEW_SENDER,374,66,160),
         field('送審日期',generated_date,374,85,160),
         field('科目編號',info['code'],140,133,94),
         field('任課教師',info['teachers'],309,133,220),
-        field('科目名稱',info['name_cn'],140,158,395),
-        field('科目英文名稱',english,140,176.5,395,11.5,9.5),
+        field('科目名稱',course_name,140,158,395),
         field('年',year,141,183,51,18,12,'ctr'),
         field('月',month,211,183,34,18,12,'ctr'),
         field('日',day,265,183,34,18,12,'ctr'),
@@ -90,7 +90,8 @@ def text_overlay(width,height,fields):
             rect=QRectF(*box)
             font=QFont();font.setFamilies(['Times New Roman','Liberation Serif','新細明體','PMingLiU',
                                          'Microsoft JhengHei','Noto Serif CJK TC','Noto Sans CJK TC'])
-            flags=Qt.AlignmentFlag.AlignVCenter|Qt.TextFlag.TextWordWrap
+            wrapping=Qt.TextFlag.TextSingleLine if label=='科目名稱' else Qt.TextFlag.TextWordWrap
+            flags=Qt.AlignmentFlag.AlignVCenter|wrapping
             flags|={'ctr':Qt.AlignmentFlag.AlignHCenter,'r':Qt.AlignmentFlag.AlignRight}.get(align,Qt.AlignmentFlag.AlignLeft)
             fits=False
             while points>=6:
