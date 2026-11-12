@@ -1,8 +1,21 @@
 # 原始碼 ZIP
 
-PDF原頁面填寫研究：[下載測試樣本 ZIP](FOF_PDF_Form_Proof.zip) · [逐份PDF及預覽](pdf-form-proof/README.md)。這是最初研究樣本；附件一／三已在v1.7.0正式整合，附件二XFA仍未整合。最新[正式生成示例](v1.7.0-samples/README.md)已套用Calvan、BAECF及考場班級人數。
+PDF原頁面填寫研究：[下載測試樣本 ZIP](FOF_PDF_Form_Proof.zip) · [逐份PDF及預覽](pdf-form-proof/README.md)。這是最初研究樣本；附件一／三已在v1.7.0正式整合，附件二XFA仍未整合。最新[正式生成示例](v1.7.1-samples/README.md)已套用Calvan、BAECF及考場班級人數。
 
-## v1.7.0（目前版本）
+## v1.7.1（目前版本）
+
+- 檔案：[FOF_Exam_Manager_v1.7.1.zip](FOF_Exam_Manager_v1.7.1.zip)
+- 原始碼版本：`5d410869bbe1d814bba92f4b3daf02a3a221ae62`
+- SHA-256：`6c20266770515b1d292744aa8641940718044923752d8c5f148b934cc8d10e17`
+- [最新PDF示例及預覽](v1.7.1-samples/README.md)
+
+附件一新增英文科目名稱，置於中文名下方。附件三班級明細移至應考總數右邊；印刷欄顯示每班應考+備用及總份數，例如32+1 (3F)、34+1 (3G)，=68。
+
+同班拆考場仍全班合共1份後備，放在該班按考場名稱排列的首個有學生考場；其他考場顯示+0。移動學生後重新生成會更新。附件二新PDF／XFA流程本次未整合。
+
+關閉舊程式，完整解壓新版，執行「首次安裝.bat」及「啟動程式.bat」，原有資料沿用。178項測試通過、2項私人附件測試略過；解壓ZIP後套件檢查及文件生成自檢通過。列印選「實際大小／100%」。
+
+## v1.7.0（保留舊版）
 
 - 檔案：[FOF_Exam_Manager_v1.7.0.zip](FOF_Exam_Manager_v1.7.0.zip)
 - 原始碼版本：`917c1f73cbc6510362ee10c97c986bc01974b0db`

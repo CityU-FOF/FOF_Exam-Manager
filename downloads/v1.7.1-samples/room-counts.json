@@ -1,0 +1,20 @@
+[
+  {
+    "name": "G2108",
+    "count": 66,
+    "spares": 2,
+    "print_copies": 68,
+    "classes": [
+      {
+        "name": "3F",
+        "count": 32,
+        "spares": 1
+      },
+      {
+        "name": "3G",
+        "count": 34,
+        "spares": 1
+      }
+    ]
+  }
+]
