@@ -2,7 +2,17 @@
 
 PDF原頁面填寫研究：[下載測試樣本 ZIP](FOF_PDF_Form_Proof.zip) · [逐份PDF及預覽](pdf-form-proof/README.md)。這是最初研究樣本；附件一／三已在v1.7.0正式整合，附件二XFA仍未整合。最新[正式生成示例](v1.7.2-samples/README.md)已套用Calvan、BAECF及考場班級人數。
 
-## v1.7.2（目前版本）
+## v1.7.3（目前版本）
+
+- 檔案：[FOF_Exam_Manager_v1.7.3.zip](FOF_Exam_Manager_v1.7.3.zip)
+- 原始碼版本：`7b8d76d2b743ce7cff5f200e0d9c1c93f1242244`
+- SHA-256：`9f97e32dc9cf85edf1bde017241e5d175d4a439968d3fbcb64ac2398890facde`
+
+不再生成「文件校驗.json」及「列印及修改說明.txt」，只輸出勾選文件。附件三檔名改為「試卷袋封面_科目編號_班級_考場.pdf」，例如「試卷袋封面_BAE303_3F+3G_G2108.pdf」，合班以+連接。
+
+關閉舊版、完整解壓新版，執行「啟動程式.bat」後重新生成即可。原有資料及PDF版面沿用，沒有新增依賴。37項相關測試及ZIP解壓後自檢通過，亦已核對實際輸出沒有兩個額外檔案。
+
+## v1.7.2（保留舊版）
 
 - 檔案：[FOF_Exam_Manager_v1.7.2.zip](FOF_Exam_Manager_v1.7.2.zip)
 - 原始碼版本：`ad62f2f14a9d7366f0f750e4025200a5c779e74d`
