@@ -41,6 +41,8 @@ def field(label,value,x,y,w,h=18,size=12,align='l'):
 
 def review_fields(info,generated_date):
     year,month,day=info['date'].split('-')
+    english=info.get('name_en','').strip()
+    if not english:raise ValidationError('附件一需要科目英文名稱，請在「科目管理」補齊。')
     return [field('學院',info['faculty'].removesuffix('學院'),420.55,28,107,17,11,'r'),
         field('課程',REVIEW_PROGRAMME,420.91,48,107,17,11,'r'),
         field('送審人',REVIEW_SENDER,374,66,160),
@@ -48,6 +50,7 @@ def review_fields(info,generated_date):
         field('科目編號',info['code'],140,133,94),
         field('任課教師',info['teachers'],309,133,220),
         field('科目名稱',info['name_cn'],140,158,395),
+        field('科目英文名稱',english,140,176.5,395,11.5,9.5),
         field('年',year,141,183,51,18,12,'ctr'),
         field('月',month,211,183,34,18,12,'ctr'),
         field('日',day,265,183,34,18,12,'ctr'),
@@ -58,14 +61,17 @@ def bag_fields(info,room):
     groups=room['classes']
     if sum(g['count'] for g in groups)!=room['count']:
         raise ValidationError('考場班級人數與應考總數不一致，請重新檢查編排。')
-    breakdown=', '.join(f'{g["count"]} ({g["name"]})' for g in groups)
-    return [field('科目及班級人數',info['code']+' '+info['name_cn']+'\n班級／人數：'+breakdown,
-                  117,202,230,32,10.5),
+    breakdown=', '.join(f'{g["count"]}\u00a0({g["name"]})' for g in groups)
+    copies=room['count']+sum(g['spares'] for g in groups)
+    printing='\n'.join([f'{g["count"]}+{g["spares"]}\u00a0({g["name"]})' for g in groups]+[f'={copies}'])
+    return [field('科目',info['code']+' '+info['name_cn'],117,202,230,32),
         field('院系',info['faculty'],117,240,230,29),
         field('考場',room['name'],117,276,153,29),
         field('日期',info['date'],117,312,151,29),
         field('時間',info['start']+'–'+info['end'],316,312,221,29),
-        field('應考人數',room['count'],158,349,103,29)]
+        field('班級及人數',breakdown,181,349,84,29,9.5),
+        field('印刷份數',printing,398.5,202,39.5,70,10),
+        field('應考人數',room['count'],158,349,21,29)]
 
 
 def text_overlay(width,height,fields):

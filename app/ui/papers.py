@@ -44,7 +44,7 @@ class PaperPage(QWidget):
             self.cover_labels[language].setWordWrap(True);coverbar.addWidget(self.cover_labels[language],1)
             b=QPushButton('匯入已審批PDF');b.clicked.connect(lambda _,l=language:self.import_cover(l));coverbar.addWidget(b)
             lf.addRow('已審批原封面',coverbar)
-        note=QLabel('A班為英文卷，其餘授課班為中文卷。每班多1份後備；內容雙面、封面另印1張單面。\n附件一每科一份PDF；附件三每考場一份一頁PDF，列出該考場班級及實際人數，可重複列印。評審結論、現場情況與簽署留白。')
+        note=QLabel('A班為英文卷，其餘授課班為中文卷。每班多1份後備；內容雙面、封面另印1張單面。\n附件一每科一份PDF；附件三每考場一份一頁PDF，應考欄列班級明細、印刷欄含後備；同班拆場後備只放首個考場，可重複列印。評審結論、現場情況與簽署留白。')
         note.setWordWrap(True);content.addWidget(note)
         self.total=QLabel();self.total.setWordWrap(True);self.total.setTextFormat(Qt.TextFormat.PlainText);content.addWidget(self.total)
         choices=QHBoxLayout();layout.addLayout(choices);self.kinds={}

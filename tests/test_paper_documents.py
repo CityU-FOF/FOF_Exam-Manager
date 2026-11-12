@@ -110,7 +110,7 @@ def test_original_pdf_forms_and_unchanged_cover_excel(manager,tmp_path):
         assert 'PRIVATE_FLAG_MUST_NOT_PRINT_985' not in reader.pages[0].extract_text()
     manifest=json.loads((output/'文件校驗.json').read_text())
     assert [(r['name'],r['count'],r['classes']) for r in manifest['rooms']]==[
-        ('G2207',3,[dict(name='D',count=3)]),('G2209',2,[dict(name='E',count=2)])]
+        ('G2207',3,[dict(name='D',count=3,spares=1)]),('G2209',2,[dict(name='E',count=2,spares=1)])]
     # Annex two is still the original editable Excel path; no XFA code is used.
     cover=next(output.glob('附件二*.xlsx'))
     ns={'x':'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'}

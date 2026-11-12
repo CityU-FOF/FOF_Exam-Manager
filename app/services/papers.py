@@ -98,10 +98,17 @@ class PaperManager:
         by_room={}
         for row in self.manager.assigned(sid):
             classes=by_room.setdefault(row['allocation_id'],{})
-            name=row['class_name'];classes[name]=classes.get(name,0)+1
-        rooms=[]
+            group=classes.setdefault(row['class_name'],dict(count=0,ids=set()))
+            group['count']+=1;group['ids'].add(row['class_id'])
+        rooms=[];spare_holders=set()
         for allocation in self.manager.allocations(sid):
             classes=by_room.get(allocation['id'],{})
-            rooms.append(dict(name=allocation['room_name'],count=sum(classes.values()),allocation_id=allocation['id'],
-                classes=[dict(name=name,count=classes[name]) for name in sorted(classes,key=str.casefold)]))
+            details=[]
+            for name in sorted(classes,key=str.casefold):
+                group=classes[name];spares=len(group['ids']-spare_holders)
+                spare_holders.update(group['ids'])
+                details.append(dict(name=name,count=group['count'],spares=spares))
+            count=sum(g['count'] for g in details);spares=sum(g['spares'] for g in details)
+            rooms.append(dict(name=allocation['room_name'],count=count,spares=spares,print_copies=count+spares,
+                              allocation_id=allocation['id'],classes=details))
         return dict(info=info,groups=list(groups.values()),rooms=rooms,pending=len(self.manager.pending(sid)))

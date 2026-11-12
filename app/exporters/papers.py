@@ -108,13 +108,14 @@ class PaperExporter:
         if 'bag' in kinds:load_template('bag')
         if 'cover' in kinds and not covers:ensure_paper_support()
         generated_date=generation_date()
+        prepared_review=review_fields(info,generated_date) if 'review' in kinds else None
         folder=Path(folder);folder.mkdir(parents=True,exist_ok=True)
         base=re.sub(r'[<>:"/\\|?*\x00-\x1f]','_',f'{info["code"]}_{info["date"]}_考務文件')
         final=folder/base;counter=2
         while final.exists():final=folder/(base+f'_{counter}');counter+=1
         with tempfile.TemporaryDirectory(prefix='.fof-paper-',dir=folder) as temp:
             temp=Path(temp)
-            if 'review' in kinds:write_form(temp/'附件一_試卷評審記錄.pdf','review',review_fields(info,generated_date))
+            if 'review' in kinds:write_form(temp/'附件一_試卷評審記錄.pdf','review',prepared_review)
             if 'bag' in kinds:
                 rooms=[r for r in context['rooms'] if r['count']]
                 if not rooms:raise ValidationError('沒有已分配學生的考場。')
@@ -131,9 +132,10 @@ class PaperExporter:
                     form_workbook(temp/'附件二_試題封面.xlsx',pages)
             if statistics:statistics_workbook(temp/'印刷用紙統計.xlsx',context,statistics)
             manifest=dict(course=info['code'],exam_date=info['date'],generated_date=generated_date,
-                rooms=[dict(name=r['name'],count=r['count'],classes=r['classes']) for r in context['rooms'] if r['count']],
+                rooms=[dict(name=r['name'],count=r['count'],spares=r['spares'],print_copies=r['print_copies'],
+                            classes=r['classes']) for r in context['rooms'] if r['count']],
                 files={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in temp.iterdir()})
             (temp/'文件校驗.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),encoding='utf8')
-            (temp/'列印及修改說明.txt').write_text('附件一、三：直接填入官方原PDF，列印選「實際大小／100%」。資料有改動時，請在程式修改後重新生成。\n附件一固定送審人Calvan、課程BAECF、送審日期為生成當日（UTC+8）。考試日期仍使用場次日期。\n附件三每個已分配學生的考場各一份一頁PDF；科目欄下方列出該考場實際授課班及人數，應考欄為該考場總數，不包括後備份數。需要多個袋時重複列印同一份。\n實考、缺考、印刷／使用／未用及現場情況按實際情況填寫。\n附件二維持原有方式，本次未整合新XFA流程；若輸出Excel，請修改「資料」頁B欄，只列印官方表格頁。\n已審批PDF按原位元組匯出，QR不修改。文件校驗.json可核對SHA-256。\n',encoding='utf8')
+            (temp/'列印及修改說明.txt').write_text('附件一、三：直接填入官方原PDF，列印選「實際大小／100%」。資料有改動時，請在程式修改後重新生成。\n附件一固定送審人Calvan、課程BAECF、送審日期為生成當日（UTC+8）。科目名稱列出中英雙語，考試日期仍使用場次日期。\n附件三每個已分配學生的考場各一份一頁PDF；應考欄總數右邊列出該考場班級人數；印刷欄列出各班應考+備用及總份數。每班合共1份後備，放在該班按考場名稱排列的首個有學生考場，其他考場該班備用為0。應考總數不包括備用。需要多個袋時重複列印同一份。\n實考、缺考、使用／未用及現場情況按實際情況填寫。\n附件二維持原有方式，本次未整合新XFA流程；若輸出Excel，請修改「資料」頁B欄，只列印官方表格頁。\n已審批PDF按原位元組匯出，QR不修改。文件校驗.json可核對SHA-256。\n',encoding='utf8')
             os.rename(temp,final)
         return final
