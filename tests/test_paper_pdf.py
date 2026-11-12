@@ -1,5 +1,4 @@
 from datetime import datetime,timezone
-import json
 from pathlib import Path
 import re
 import unicodedata
@@ -49,9 +48,9 @@ def test_fixed_review_and_four_independent_bag_pdfs(manager,tmp_path,monkeypatch
     assert '應用經濟學學士學位課程' not in review
     expected={'G2108':(62,[(32,'3B'),(30,'3C')]),'G2110':(58,[(28,'3D'),(30,'3F')]),
               'G2112':(11,[(5,'3G'),(6,'3H')]),'G2114':(7,[(4,'3I'),(3,'3J')])}
-    assert len(list(bundle.glob('附件三*.pdf')))==4
+    assert len(list(bundle.glob('試卷袋封面*.pdf')))==4
     for room,(total,groups) in expected.items():
-        path=bundle/f'附件三_試卷袋封面_{room}.pdf';reader=PdfReader(path);content=text(path)
+        path=bundle/f'試卷袋封面_BAE303_{"+".join(name for _,name in groups)}_{room}.pdf';reader=PdfReader(path);content=text(path)
         assert len(reader.pages)==1 and list(map(float,reader.pages[0].mediabox))==[0,0,595.32,841.92]
         assert room in content and content.rstrip().splitlines()[-1]==str(total)
         assert '2026-12-03' in content
@@ -61,10 +60,10 @@ def test_fixed_review_and_four_independent_bag_pdfs(manager,tmp_path,monkeypatch
         for other in expected:
             if other!=room:assert other not in content
         assert not re.search(r'\(\s*A\s*\)',content)
-    manifest=json.loads((bundle/'文件校驗.json').read_text())
-    assert manifest['generated_date']=='2030-02-03'
-    assert sum(room['count'] for room in manifest['rooms'])==138
-    assert sum(room['print_copies'] for room in manifest['rooms'])==146
+    context=PaperManager(manager).context(sid)
+    assert len(list(bundle.iterdir()))==5
+    assert sum(room['count'] for room in context['rooms'])==138
+    assert sum(room['print_copies'] for room in context['rooms'])==146
     assert not list(bundle.glob('*.xlsx')) and not list(bundle.glob('附件二*'))
 
 
@@ -74,11 +73,11 @@ def test_split_class_counts_follow_current_room_after_move(manager,tmp_path):
     manager.assign(rooms['G2207'],classes['D'],[s['student_id'] for s in students[:2]])
     manager.assign(rooms['G2209'],classes['D'])
     first=PaperExporter(manager).generate(sid,tmp_path,['bag'])
-    assert text(first/'附件三_試卷袋封面_G2207.pdf').rstrip().splitlines()[-1]=='2'
+    assert text(first/'試卷袋封面_BAE305_D_G2207.pdf').rstrip().splitlines()[-1]=='2'
     manager.move_students([manager.assigned(aid=rooms['G2207'])[0]['id']],rooms['G2209'])
     second=PaperExporter(manager).generate(sid,tmp_path,['bag'])
     for room,count in [('G2207',1),('G2209',3)]:
-        content=text(second/f'附件三_試卷袋封面_{room}.pdf')
+        content=text(second/f'試卷袋封面_BAE305_D_{room}.pdf')
         assert content.rstrip().splitlines()[-1]==str(count)
         assert re.search(rf'{count}\s*\(\s*D\s*\)',content)
         spares=1 if room=='G2207' else 0
@@ -89,15 +88,15 @@ def test_split_class_counts_follow_current_room_after_move(manager,tmp_path):
     assert first!=second and first.exists()
     manager.move_students([s['id'] for s in manager.assigned(aid=rooms[0]['allocation_id'])],rooms[1]['allocation_id'])
     third=PaperExporter(manager).generate(sid,tmp_path,['bag'])
-    assert [p.name for p in third.glob('*.pdf')]==['附件三_試卷袋封面_G2209.pdf']
-    assert '4+1(D)' in ''.join(text(third/'附件三_試卷袋封面_G2209.pdf').split())
+    assert [p.name for p in third.glob('*.pdf')]==['試卷袋封面_BAE305_D_G2209.pdf']
+    assert '4+1(D)' in ''.join(text(third/'試卷袋封面_BAE305_D_G2209.pdf').split())
 
 
 def test_empty_allocated_room_has_no_bag_pdf(manager,tmp_path):
     sid,classes,rooms=setup_exam(manager,(2,))
     manager.assign(rooms['G2207'],classes['D'])
     output=PaperExporter(manager).generate(sid,tmp_path,['bag'])
-    assert [p.name for p in output.glob('*.pdf')]==['附件三_試卷袋封面_G2207.pdf']
+    assert [p.name for p in output.glob('*.pdf')]==['試卷袋封面_BAE305_D_G2207.pdf']
 
 
 def test_pdf_does_not_depend_on_pillow_bridge(manager,tmp_path,monkeypatch):

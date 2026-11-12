@@ -132,7 +132,7 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.7.2');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.7.3');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)

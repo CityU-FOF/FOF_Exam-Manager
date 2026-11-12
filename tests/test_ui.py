@@ -98,6 +98,6 @@ def test_combined_names_preview_and_save(qtbot,manager,tmp_path,monkeypatch):
     monkeypatch.setattr(QMessageBox,'question',lambda *a,**k:QMessageBox.StandardButton.Yes)
     dialog.commit()
     win=MainWindow(manager);qtbot.addWidget(win)
-    assert 'v1.7.2' in win.windowTitle()
+    assert 'v1.7.3' in win.windowTitle()
     assert win.students_table.item(0,1).text()=='陳大文'
     assert win.students_table.item(0,2).text()=='CHAN TAI MAN'

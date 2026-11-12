@@ -1,5 +1,4 @@
 import hashlib
-import json
 import sqlite3
 from pathlib import Path
 from xml.etree import ElementTree as ET
@@ -84,7 +83,7 @@ def test_approved_pdf_exact_bytes_survive_backup_and_restart(manager,tmp_path):
     exported=next(bundle.glob('*.pdf'))
     assert exported.read_bytes()==source.read_bytes()
     assert hashlib.sha256(exported.read_bytes()).hexdigest()==pm.covers(sid)['cn']['sha256']
-    assert not list(bundle.glob('*.xlsx'))
+    assert {p.name for p in bundle.iterdir()}=={exported.name}
 
 
 def test_pending_approval_and_missing_pdf_block_without_partial_files(manager,tmp_path):
@@ -102,14 +101,15 @@ def test_original_pdf_forms_and_unchanged_cover_excel(manager,tmp_path):
     student=manager.assigned(sid)[0];manager.set_student_flag(student['student_id'],'PRIVATE_FLAG_MUST_NOT_PRINT_985')
     output=PaperExporter(manager).generate(sid,tmp_path,['review','cover','bag','statistics'])
     assert len(list(output.glob('附件一*.pdf')))==1
-    assert len(list(output.glob('附件三*.pdf')))==2
+    assert len(list(output.glob('試卷袋封面*.pdf')))==2
     assert len(list(output.glob('*.xlsx')))==2
+    assert len(list(output.iterdir()))==5
     for pdf in output.glob('*.pdf'):
         reader=PdfReader(pdf)
         assert len(reader.pages)==1 and list(map(float,reader.pages[0].mediabox))==[0,0,595.32,841.92]
         assert 'PRIVATE_FLAG_MUST_NOT_PRINT_985' not in reader.pages[0].extract_text()
-    manifest=json.loads((output/'文件校驗.json').read_text())
-    assert [(r['name'],r['count'],r['classes']) for r in manifest['rooms']]==[
+    context=PaperManager(manager).context(sid)
+    assert [(r['name'],r['count'],r['classes']) for r in context['rooms']]==[
         ('G2207',3,[dict(name='D',count=3,spares=1)]),('G2209',2,[dict(name='E',count=2,spares=1)])]
     # Annex two is still the original editable Excel path; no XFA code is used.
     cover=next(output.glob('附件二*.xlsx'))
@@ -197,7 +197,7 @@ def test_review_and_bags_need_no_approved_cover_or_page_counts(manager,tmp_path)
     sid,_,_,pm=setup_documents(manager)
     pm.save(sid,default_settings())
     output=PaperExporter(manager).generate(sid,tmp_path,['review','bag'])
-    assert {p.name for p in output.glob('*.pdf')}=={'附件一_試卷評審記錄.pdf','附件三_試卷袋封面_G2207.pdf','附件三_試卷袋封面_G2209.pdf'}
+    assert {p.name for p in output.iterdir()}=={'附件一_試卷評審記錄.pdf','試卷袋封面_BAE305_D_G2207.pdf','試卷袋封面_BAE305_E_G2209.pdf'}
     assert pm.covers(sid)=={}
 
 
