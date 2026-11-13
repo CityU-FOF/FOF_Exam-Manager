@@ -2,7 +2,17 @@
 
 PDF原頁面填寫研究：[下載測試樣本 ZIP](FOF_PDF_Form_Proof.zip) · [逐份PDF及預覽](pdf-form-proof/README.md)。這是最初研究樣本；附件一／三已在v1.7.0正式整合，附件二XFA仍未整合。最新[正式生成示例](v1.7.2-samples/README.md)已套用Calvan、BAECF及考場班級人數。
 
-## v1.7.3（目前版本）
+## v1.7.4（目前版本）
+
+- 檔案：[FOF_Exam_Manager_v1.7.4.zip](FOF_Exam_Manager_v1.7.4.zip)
+- 原始碼版本：`dc096936978cc8ba40c892ac57ff9652fe7e0a95`
+- SHA-256：`9cba4dc5d0ef00bfae8f153961e7a4ef408b3a3dedb0b47b2b613d1bb54de69f`
+
+文件生成中心的「簽到表末尾附班級座號索引（細字）」改為預設勾選，並在本機資料目錄記住選擇。重開程式或換解壓資料夾不再重置，仍可自行取消。索引按實際授課班座號列出連續範圍及零散號碼，只出現在簽到表末尾。
+
+現有版本可先勾選上述選項再重新生成。更新時關閉舊版，完整解壓新版，執行「啟動程式.bat」即可；沒有新增依賴或資料庫變更，資料沿用。15項相關測試及ZIP解壓後自檢通過，已驗證重開保留選擇與實際Excel索引輸出。
+
+## v1.7.3（保留舊版）
 
 - 檔案：[FOF_Exam_Manager_v1.7.3.zip](FOF_Exam_Manager_v1.7.3.zip)
 - 原始碼版本：`7b8d76d2b743ce7cff5f200e0d9c1c93f1242244`
