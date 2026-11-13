@@ -68,7 +68,7 @@ def test_shuffle_ui_cancel_search_and_confirm(qtbot,manager,monkeypatch):
     win=MainWindow(manager);qtbot.addWidget(win);win.select_session(sid,6)
     win.seat_room.setCurrentIndex(win.seat_room.findData(aid))
     assert any(b.text()=='隨機打散座位' for b in win.findChildren(QPushButton))
-    assert not win.include_class_index.isChecked()
+    assert win.include_class_index.isChecked()
     before=manager.snapshot(sid)
     win.seat_search.setText('測試')
     with pytest.raises(ValidationError,match='清除搜尋'):win.shuffle_seats()
@@ -84,6 +84,29 @@ def test_index_ranges_never_bridge_missing_seats():
     students=[dict(class_name='3D',seat=s) for s in ['010','003','001','004']]
     students += [dict(class_name='3F',seat=s) for s in ['002','007','008']]
     assert class_seat_index(students)==['3D：001、003–004、010','3F：002、007–008']
+
+
+def test_index_choice_survives_reopening_and_controls_actual_export(qtbot,manager,tmp_path):
+    sid,classes,rooms=setup_exam(manager,(3,2));aid=rooms['G2207']
+    for cid in classes.values():manager.assign(aid,cid)
+    first=MainWindow(manager);qtbot.addWidget(first)
+    assert first.include_class_index.isChecked()
+    first.include_class_index.setChecked(False);first.close()
+    assert 'false' in manager.db.path.with_suffix('.preferences.ini').read_text().lower()
+    second=MainWindow(manager);qtbot.addWidget(second)
+    assert not second.include_class_index.isChecked()
+    plain=second.exporter.generate(aid,tmp_path/'plain',include_class_index=second.include_class_index.isChecked())
+    second.include_class_index.setChecked(True);second.close()
+    third=MainWindow(manager);qtbot.addWidget(third)
+    assert third.include_class_index.isChecked()
+    indexed=third.exporter.generate(aid,tmp_path/'indexed',include_class_index=third.include_class_index.isChecked())
+    for path,wanted in [(plain,False),(indexed,True)]:
+        wb=load_workbook(path)
+        try:
+            lines=[c.value for row in wb['Attendance'] for c in row if '班級座號索引' in str(c.value)]
+            assert lines==(['班級座號索引 · D：001–003','班級座號索引 · E：004–005'] if wanted else [])
+            assert not any('班級座號索引' in str(c.value) for row in wb['Seat Plan'] for c in row)
+        finally:wb.close()
 
 
 def test_optional_index_export_uses_actual_mixed_seats_only_on_attendance(manager,tmp_path):

@@ -1,6 +1,6 @@
 from datetime import date
 from pathlib import Path
-from PySide6.QtCore import Qt, QUrl, QSize
+from PySide6.QtCore import Qt, QUrl, QSize, QSettings
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
  QListWidget,QListWidgetItem,QStackedWidget,QLineEdit,QComboBox,QTableWidget,QTableWidgetItem,
@@ -132,7 +132,8 @@ class SessionDialog(FormDialog):
 class MainWindow(QMainWindow):
     def __init__(self,manager):
         super().__init__();self.manager=manager;self.exporter=ExcelExporter(manager);self.last_output=None
-        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.7.3');self.resize(1440,920);self.setMinimumSize(1000,650)
+        self.ui_settings=QSettings(str(manager.db.path.with_suffix('.preferences.ini')),QSettings.Format.IniFormat,self)
+        self.setWindowTitle('FOF Exam Seating & Attendance Manager v1.7.4');self.resize(1440,920);self.setMinimumSize(1000,650)
         self.setAcceptDrops(True)
         root=QWidget();self.setCentralWidget(root);outer=QHBoxLayout(root);outer.setContentsMargins(0,0,0,0)
         self.nav=QListWidget();self.nav.setFixedWidth(210)
@@ -291,7 +292,9 @@ class MainWindow(QMainWindow):
         self.gen_sort.currentIndexChanged.connect(self.refresh_generation);ordering.addWidget(self.gen_sort)
         ordering.addWidget(QLabel('同一場次的考場保持相鄰'))
         self.include_class_index=QCheckBox('簽到表末尾附班級座號索引（細字）')
-        self.include_class_index.setToolTip('按實際座號列出各授課班的連續範圍及零散座號；座位表不加標記。')
+        self.include_class_index.setToolTip('預設開啟並記住選擇。按實際座號列出各授課班的連續範圍及零散座號；座位表不加標記。')
+        self.include_class_index.setChecked(self.ui_settings.value('exports/include_class_index',True,type=bool))
+        self.include_class_index.toggled.connect(self.save_class_index_preference)
         layout.addWidget(self.include_class_index)
         bar=QHBoxLayout();layout.addLayout(bar)
         button('全選',lambda:self.check_generation(True),bar);button('取消全選',lambda:self.check_generation(False),bar)
@@ -303,6 +306,10 @@ class MainWindow(QMainWindow):
         self.generation_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         layout.addWidget(self.generation_table)
         self.generation_results=QListWidget();layout.addWidget(self.generation_results,1)
+
+    def save_class_index_preference(self,enabled):
+        self.ui_settings.setValue('exports/include_class_index',enabled)
+        self.ui_settings.sync()
 
     def build_settings(self):
         layout=self.page('設定與資料備份','備份使用獨立檔案；還原前自動另存現有資料庫，不會無提示覆蓋。')
